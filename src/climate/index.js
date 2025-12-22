@@ -4,7 +4,7 @@
  */
 
 import { KOPPEN_RULES } from './koppen-rules.js';
-import { KOPPEN_PRESETS } from './presets.js';
+import { KOPPEN_PRESET } from './presets.js';
 
 let currentThresholds = null;
 
@@ -15,7 +15,7 @@ export default {
    */
   init(_options = {}) {
     // Load default Köppen preset
-    currentThresholds = { ...KOPPEN_PRESETS.koppen };
+    currentThresholds = { ...KOPPEN_PRESET.thresholds };
     console.log('[Koppen] Climate module initialized with Köppen preset');
   },
 
@@ -42,7 +42,7 @@ export default {
    * Reset to Köppen preset
    */
   resetToKoppen() {
-    currentThresholds = { ...KOPPEN_PRESETS.koppen };
+    currentThresholds = { ...KOPPEN_PRESET.thresholds };
     document.dispatchEvent(new CustomEvent('koppen:classification-changed', {
       detail: { thresholds: currentThresholds },
     }));

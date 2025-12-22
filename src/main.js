@@ -100,6 +100,20 @@ function setupEventListeners() {
     app.modules.ui.updateLegend(e.detail.stats);
   });
 
+  // Threshold changed (Story 4.4: Real-Time Map Updates)
+  document.addEventListener('koppen:threshold-changed', (e) => {
+    // Trigger reclassification with new thresholds
+    document.dispatchEvent(new CustomEvent('koppen:reclassify', {
+      detail: { thresholds: e.detail.thresholds },
+    }));
+  });
+
+  // Classification updated (after reclassification)
+  document.addEventListener('koppen:classification-updated', (e) => {
+    // Update UI with reclassification count
+    showReclassificationCounter(e.detail.count);
+  });
+
   // Feature hover
   document.addEventListener('koppen:feature-hover', (e) => {
     app.modules.ui.showTooltip(e.detail);
@@ -197,6 +211,39 @@ function showError(message) {
     <button onclick="location.reload()">Reload</button>
   `;
   app.prepend(errorDiv);
+}
+
+/**
+ * Show reclassification counter (Story 4.4)
+ * @param {number} count - Number of cells reclassified
+ */
+let reclassCounterTimeout;
+function showReclassificationCounter(count) {
+  // Find or create counter element
+  let counter = document.getElementById('reclass-counter');
+
+  if (!counter) {
+    counter = document.createElement('div');
+    counter.id = 'reclass-counter';
+    counter.className = 'reclass-counter';
+    counter.setAttribute('role', 'status');
+    counter.setAttribute('aria-live', 'polite');
+    document.body.appendChild(counter);
+  }
+
+  // Update counter text
+  counter.textContent = `${count.toLocaleString()} cells reclassified`;
+  counter.classList.add('reclass-counter--visible');
+
+  // Clear existing timeout
+  if (reclassCounterTimeout) {
+    clearTimeout(reclassCounterTimeout);
+  }
+
+  // Auto-hide after 2 seconds
+  reclassCounterTimeout = setTimeout(() => {
+    counter.classList.remove('reclass-counter--visible');
+  }, 2000);
 }
 
 /**

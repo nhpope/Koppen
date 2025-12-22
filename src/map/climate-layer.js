@@ -6,7 +6,7 @@
 import L from 'leaflet';
 import { getClimateColor } from '../utils/colors.js';
 import { CLIMATE_TYPES, KOPPEN_RULES } from '../climate/koppen-rules.js';
-import { KOPPEN_PRESETS } from '../climate/presets.js';
+import { KOPPEN_PRESET } from '../climate/presets.js';
 
 let climateLayer = null;
 let classifiedFeatures = null;

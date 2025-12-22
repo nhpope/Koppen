@@ -1,0 +1,113 @@
+# Workflow Status Template
+
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
+generated: "2025-12-05"
+project: "Koppen"
+project_type: "visualization-tool"
+selected_track: "bmad-method"
+field_type: "greenfield"
+workflow_path: "method-greenfield.yaml"
+
+workflow_status:
+  # Phase 0: Discovery (Optional)
+  - phase: 0
+    name: "Discovery"
+    workflows:
+      - id: "brainstorm-project"
+        status: "docs/analysis/brainstorming-session-2025-12-05.md"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:brainstorm-project"
+        selected: true
+        completed: "2025-12-05"
+
+      - id: "research"
+        status: "docs/analysis/research/technical-koppen-research-2025-12-05.md"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:research"
+        selected: true
+        completed: "2025-12-05"
+
+      - id: "product-brief"
+        status: "docs/analysis/product-brief-Koppen-2025-12-05.md"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:product-brief"
+        selected: true
+        completed: "2025-12-05"
+
+  # Phase 1: Planning
+  - phase: 1
+    name: "Planning"
+    workflows:
+      - id: "prd"
+        status: "docs/prd.md"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:prd"
+        completed: "2025-12-05"
+
+      - id: "validate-prd"
+        status: "optional"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:validate-prd"
+
+      - id: "create-ux-design"
+        status: "conditional"
+        condition: "if_has_ui"
+        agent: "ux-designer"
+        command: "/bmad:bmm:workflows:create-ux-design"
+
+  # Phase 2: Solutioning
+  - phase: 2
+    name: "Solutioning"
+    workflows:
+      - id: "create-architecture"
+        status: "docs/architecture.md"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:create-architecture"
+        completed: "2025-12-05"
+
+      - id: "create-epics-and-stories"
+        status: "docs/epics.md"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:create-epics-and-stories"
+        completed: "2025-12-05"
+
+      - id: "test-design"
+        status: "recommended"
+        agent: "tea"
+        command: "/bmad:bmm:workflows:test-design"
+
+      - id: "validate-architecture"
+        status: "optional"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:validate-architecture"
+
+      - id: "implementation-readiness"
+        status: "docs/implementation-readiness-report-2025-12-05.md"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:implementation-readiness"
+        completed: "2025-12-05"
+
+  # Phase 3: Implementation
+  - phase: 3
+    name: "Implementation"
+    workflows:
+      - id: "sprint-planning"
+        status: "docs/sprint-artifacts/sprint-status.yaml"
+        agent: "sm"
+        command: "/bmad:bmm:workflows:sprint-planning"
+        note: "Creates sprint-status.yaml for implementation tracking"
+        completed: "2025-12-05"

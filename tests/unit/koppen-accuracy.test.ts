@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { KOPPEN_RULES } from '../../src/climate/koppen-rules.js';
-import { KOPPEN_PRESETS } from '../../src/climate/presets.js';
+import { KOPPEN_PRESET, getThresholdValues } from '../../src/climate/presets.js';
 
 // Use real Köppen classification engine
 function calculateKoppen(data: {
@@ -19,7 +19,7 @@ function calculateKoppen(data: {
   temp: number[]; // Monthly temperatures (°C)
   precip: number[]; // Monthly precipitation (mm)
 }): string {
-  return KOPPEN_RULES.classify(data, KOPPEN_PRESETS.koppen);
+  return KOPPEN_RULES.classify(data, getThresholdValues(KOPPEN_PRESET));
 }
 
 describe('Köppen Classification Accuracy', () => {
