@@ -1,0 +1,8 @@
+# Climate Data Pipeline Requirements
+numpy>=1.21.0
+xarray>=0.19.0
+netcdf4>=1.5.0
+topojson>=1.5
+geopandas>=0.10.0
+shapely>=1.8.0
+pandas>=1.3.0
