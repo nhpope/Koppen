@@ -395,23 +395,30 @@ export const KOPPEN_RULES = {
 
     const Psummer = summerMonths.reduce((sum, i) => sum + precip[i], 0);
 
-    // Calculate Pthreshold for B climates (Beck et al. 2018 formula)
+    // Calculate Pthreshold for B climates (Köppen-Geiger formula)
+    // Pthreshold in mm, MAT in °C
     let Pthreshold;
     if (Psummer / MAP >= 0.7) {
-      Pthreshold = 2 * MAT + 280;  // Summer rainfall dominant
+      Pthreshold = 20 * MAT + 280;  // Summer rainfall dominant
     } else if (Psummer / MAP <= 0.3) {
-      Pthreshold = 2 * MAT;         // Winter rainfall dominant
+      Pthreshold = 20 * MAT;         // Winter rainfall dominant
     } else {
-      Pthreshold = 2 * MAT + 140;   // Evenly distributed
+      Pthreshold = 20 * MAT + 140;   // Evenly distributed
     }
 
     // Count warm months (T > 10°C)
     const warmMonths = temp.filter(t => t > 10).length;
 
     // Classification decision tree (per Beck et al. 2018)
-    // Order: B (arid) → E (polar) / A (tropical) → C/D (temperate/continental)
+    // Order: E (polar) → B (arid) → A (tropical) → C/D (temperate/continental)
+    // E is checked first because it's independent of precipitation (purely temperature-based)
 
-    // B - Arid (check precipitation threshold FIRST)
+    // E - Polar (check temperature extremes FIRST - independent of precipitation)
+    if (Tmax < thresholds.polar_tmax) {
+      return Tmax < thresholds.icecap_tmax ? 'EF' : 'ET';
+    }
+
+    // B - Arid (check precipitation threshold)
     if (MAP < Pthreshold) {
       const isDesert = MAP < Pthreshold * 0.5;
       const isHot = MAT >= thresholds.arid_hot;
@@ -420,11 +427,6 @@ export const KOPPEN_RULES = {
       }
         return isHot ? 'BSh' : 'BSk';
 
-    }
-
-    // E - Polar (check temperature extremes)
-    if (Tmax < thresholds.polar_tmax) {
-      return Tmax < thresholds.icecap_tmax ? 'EF' : 'ET';
     }
 
     // A - Tropical (warm all year)

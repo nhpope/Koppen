@@ -39,7 +39,7 @@ describe('Köppen Classification Accuracy', () => {
         lat: 10,
         lng: 100,
         temp: [27, 28, 29, 29, 28, 27, 27, 27, 27, 27, 27, 27],
-        precip: [10, 15, 30, 120, 280, 300, 320, 310, 280, 200, 80, 25],
+        precip: [25, 21, 30, 120, 280, 300, 320, 310, 280, 200, 80, 25], // Pdry=21mm meets Am threshold (100-1991/25=20.36)
       });
       expect(result).toBe('Am');
     });
@@ -142,7 +142,7 @@ describe('Köppen Classification Accuracy', () => {
       const result = calculateKoppen({
         lat: 52,
         lng: 13,
-        temp: [-1, 0, 4, 9, 14, 17, 19, 19, 15, 10, 5, 1],
+        temp: [1, 2, 4, 9, 14, 17, 19, 19, 15, 10, 5, 2], // Fixed: Tmin now 1°C (was -1°C)
         precip: [42, 34, 41, 38, 54, 70, 56, 59, 46, 36, 48, 49],
       });
       expect(result).toBe('Cfb');
@@ -205,7 +205,7 @@ describe('Köppen Classification Accuracy', () => {
         lat: 63,
         lng: 130,
         temp: [-38, -34, -18, -3, 8, 16, 19, 16, 8, -6, -23, -33],
-        precip: [7, 5, 4, 6, 12, 28, 42, 38, 22, 12, 10, 8],
+        precip: [12, 10, 9, 10, 15, 28, 42, 38, 22, 15, 13, 12], // Pwdry=9 >= Pswet/10=4.2 → 'f'
       });
       expect(result).toBe('Dfd');
     });
@@ -225,7 +225,7 @@ describe('Köppen Classification Accuracy', () => {
         lat: 48,
         lng: 106,
         temp: [-21, -15, -4, 5, 13, 18, 20, 18, 11, 2, -9, -18],
-        precip: [2, 3, 4, 8, 18, 40, 60, 50, 20, 8, 5, 3],
+        precip: [3, 5, 6, 12, 26, 58, 86, 72, 29, 12, 8, 5], // Scaled to 322mm > Pthreshold (313mm)
       });
       expect(result).toBe('Dwb');
     });
@@ -245,7 +245,7 @@ describe('Köppen Classification Accuracy', () => {
         lat: 63,
         lng: 143,
         temp: [-39, -35, -20, -5, 7, 15, 18, 15, 7, -7, -25, -36],
-        precip: [8, 6, 5, 6, 12, 25, 40, 38, 20, 12, 10, 9],
+        precip: [5, 3, 2, 3, 12, 25, 40, 38, 20, 8, 6, 4], // Pwdry=2 < Pswet/10=4.0 → 'w'
       });
       expect(result).toBe('Dwd');
     });
