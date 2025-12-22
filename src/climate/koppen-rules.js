@@ -409,32 +409,33 @@ export const KOPPEN_RULES = {
     const warmMonths = temp.filter(t => t > 10).length;
 
     // Classification decision tree (per Beck et al. 2018)
+    // Order: B (arid) → E (polar) / A (tropical) → C/D (temperate/continental)
 
-    // E - Polar
-    if (Tmax < thresholds.polar_tmax) {
-      return Tmax < thresholds.icecap_tmax ? 'EF' : 'ET';
-    }
-
-    // B - Arid
+    // B - Arid (check precipitation threshold FIRST)
     if (MAP < Pthreshold) {
       const isDesert = MAP < Pthreshold * 0.5;
       const isHot = MAT >= thresholds.arid_hot;
       if (isDesert) {
         return isHot ? 'BWh' : 'BWk';
-      } 
+      }
         return isHot ? 'BSh' : 'BSk';
-      
+
     }
 
-    // A - Tropical
+    // E - Polar (check temperature extremes)
+    if (Tmax < thresholds.polar_tmax) {
+      return Tmax < thresholds.icecap_tmax ? 'EF' : 'ET';
+    }
+
+    // A - Tropical (warm all year)
     if (Tmin >= thresholds.tropical_min) {
       if (Pdry >= thresholds.tropical_dry) {
         return 'Af';
       } else if (Pdry >= 100 - MAP / 25) {
         return 'Am';
-      } 
+      }
         return Psdry < Pwdry ? 'As' : 'Aw';
-      
+
     }
 
     // C or D - Temperate or Continental
