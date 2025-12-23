@@ -332,7 +332,7 @@ describe('Builder Module', () => {
       expect(slider).toBeTruthy();
     });
 
-    it('should show placeholder when Scratch button clicked', () => {
+    it('should show help message when Scratch button clicked', async () => {
       builderModule.open();
 
       const scratchBtn = document.getElementById('start-from-scratch') as HTMLButtonElement;
@@ -340,10 +340,13 @@ describe('Builder Module', () => {
 
       scratchBtn.click();
 
-      // Should show placeholder for Story 4.6
-      const placeholder = builderPanel.querySelector('.builder-panel__placeholder');
-      expect(placeholder).toBeTruthy();
-      expect(placeholder?.textContent).toContain('Story 4.6');
+      // Wait for async dynamic import to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Should show help message for scratch mode (Story 4.6)
+      const helpMessage = builderPanel.querySelector('.builder-panel__help');
+      expect(helpMessage).toBeTruthy();
+      expect(helpMessage?.textContent).toContain('Define thresholds');
     });
   });
 });

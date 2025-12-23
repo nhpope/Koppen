@@ -53,7 +53,11 @@ async function initializeApp() {
     // Set up event listeners
     setupEventListeners();
 
-    // Check for URL state
+    // Initialize URL state synchronization (Story 6.7)
+    // This handles both initial restoration AND ongoing sync
+    await initializeStateSync();
+
+    // Legacy: Check for shared URL (Story 6.4 - still needed for shared-info-bar)
     await restoreFromURL();
 
     app.initialized = true;
@@ -174,7 +178,20 @@ function handleKeyboard(e) {
 }
 
 /**
- * Restore state from URL if present
+ * Initialize URL state synchronization (Story 6.7)
+ */
+async function initializeStateSync() {
+  try {
+    const { initStateSync } = await import('./utils/url-state.js');
+    initStateSync();
+    console.log('[Koppen] URL state synchronization active');
+  } catch (error) {
+    console.error('[Koppen] Failed to initialize state sync:', error);
+  }
+}
+
+/**
+ * Restore state from URL if present (Story 6.4)
  */
 async function restoreFromURL() {
   const { getStateFromURL } = await import('./utils/url-state.js');
@@ -183,18 +200,59 @@ async function restoreFromURL() {
   if (state) {
     console.log('[Koppen] Restoring state from URL');
 
+    // Apply thresholds if present
     if (state.thresholds) {
-      app.modules.climate.setThresholds(state.thresholds);
-    }
-
-    if (state.view) {
-      app.modules.map.setView(state.view.lat, state.view.lng, state.view.zoom);
-    }
-
-    if (state.name) {
-      document.dispatchEvent(new CustomEvent('koppen:preset-loaded', {
-        detail: { name: state.name },
+      // Fire rules-loaded event for shared info bar
+      document.dispatchEvent(new CustomEvent('koppen:rules-loaded', {
+        detail: {
+          name: state.name || 'Shared Classification',
+          thresholds: state.thresholds,
+          source: state.metadata?.source || 'url',
+        },
       }));
+
+      // Open builder panel and load classification
+      app.modules.builder.open();
+
+      // Wait for builder to initialize, then start from Köppen
+      setTimeout(async () => {
+        // Trigger Köppen preset load (will be modified by thresholds)
+        const koppenBtn = document.getElementById('start-from-koppen');
+        if (koppenBtn) {
+          koppenBtn.click();
+
+          // Wait for preset to load, then apply shared thresholds
+          setTimeout(() => {
+            // Set classification name
+            const nameInput = document.getElementById('classification-name');
+            if (nameInput && state.name) {
+              nameInput.value = state.name;
+            }
+
+            // Apply shared thresholds
+            // This will trigger reclassification via koppen:threshold-changed events
+            Object.keys(state.thresholds).forEach((category) => {
+              Object.keys(state.thresholds[category]).forEach((key) => {
+                const value = state.thresholds[category][key].value;
+                const slider = document.querySelector(`[data-threshold-key="${key}"] input[type="range"]`);
+                if (slider && value !== undefined) {
+                  slider.value = value;
+                  slider.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+              });
+            });
+
+            console.log('[Koppen] Applied shared classification thresholds');
+          }, 500);
+        }
+      }, 300);
+    }
+
+    // Apply map view if present
+    if (state.view) {
+      setTimeout(() => {
+        app.modules.map.flyTo(state.view.lat, state.view.lng, state.view.zoom);
+      }, 1000);
     }
   }
 }

@@ -293,14 +293,42 @@ export default {
 ---
 
 ## Definition of Done
-- [ ] Click selects legend item
-- [ ] Visual highlight on selected item
-- [ ] Single selection enforced
-- [ ] Click again to deselect
-- [ ] `koppen:climate-selected` event dispatched
-- [ ] `koppen:climate-deselected` event dispatched
-- [ ] Enter/Space keyboard selection works
-- [ ] Arrow key navigation works
-- [ ] Focus indicator visible
-- [ ] `aria-selected` correctly set
-- [ ] No console errors
+- [x] Click selects legend item
+- [x] Visual highlight on selected item
+- [x] Single selection enforced
+- [x] Click again to deselect
+- [x] `koppen:climate-selected` event dispatched
+- [x] `koppen:climate-deselected` event dispatched
+- [x] Enter/Space keyboard selection works
+- [x] Arrow key navigation works
+- [x] Focus indicator visible
+- [x] `aria-selected` correctly set
+- [x] No console errors
+
+## Code Review Results
+
+**Review Date:** 2024-12-22
+**Reviewer:** Claude Code (AI Code Review)
+**Status:** APPROVED
+
+### Issues Found: 0
+
+### Code Quality Assessment
+- **Selection Logic:**
+  - selectType() handles new selection with deselect of previous
+  - deselectType() properly clears state and dispatches event
+  - Toggle behavior implemented (click same item deselects)
+- **Accessibility:**
+  - aria-selected updates on state change
+  - Keyboard handlers for Enter/Space/Escape/ArrowUp/ArrowDown
+  - Focus management with scrollIntoView on selection
+- **Events:**
+  - koppen:climate-selected dispatched with { type } detail
+  - koppen:climate-deselected dispatched with { type } detail
+  - fromMap flag prevents circular event loops
+- **Visual:**
+  - .legend__item--active class provides clear highlight
+  - Active state has distinct color (primary color background)
+
+### Files Reviewed
+- `/Users/NPope97/Koppen/koppen-app/src/ui/legend.js` - PASSED

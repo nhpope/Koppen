@@ -30,29 +30,38 @@ describe('Köppen Preset Data', () => {
       const temp = KOPPEN_PRESET.thresholds.temperature;
 
       expect(temp.tropical_min).toBeDefined();
-      expect(temp.cold_month_min).toBeDefined();
+      expect(temp.temperate_cold_min).toBeDefined();
       expect(temp.hot_summer).toBeDefined();
-      expect(temp.warm_months_threshold).toBeDefined();
-      expect(temp.warm_months_count).toBeDefined();
+      expect(temp.polar_tmax).toBeDefined();
+      expect(temp.icecap_tmax).toBeDefined();
+      expect(temp.warm_months).toBeDefined();
+      expect(temp.very_cold_winter).toBeDefined();
+      expect(temp.arid_hot).toBeDefined();
     });
 
     it('should have all precipitation threshold definitions', () => {
       const precip = KOPPEN_PRESET.thresholds.precipitation;
 
-      expect(precip.dry_month).toBeDefined();
+      expect(precip.tropical_dry).toBeDefined();
+      expect(precip.dry_summer_threshold).toBeDefined();
       expect(precip.dry_season_factor).toBeDefined();
       expect(precip.monsoon_threshold).toBeDefined();
-      expect(precip.arid_summer_factor).toBeDefined();
     });
 
     it('should have correct Beck et al. 2018 values', () => {
       const temp = KOPPEN_PRESET.thresholds.temperature;
+      const precip = KOPPEN_PRESET.thresholds.precipitation;
 
       expect(temp.tropical_min.value).toBe(18);
-      expect(temp.cold_month_min.value).toBe(0);
+      expect(temp.temperate_cold_min.value).toBe(0);
       expect(temp.hot_summer.value).toBe(22);
-      expect(temp.warm_months_threshold.value).toBe(10);
-      expect(temp.warm_months_count.value).toBe(4);
+      expect(temp.polar_tmax.value).toBe(10);
+      expect(temp.icecap_tmax.value).toBe(0);
+      expect(temp.warm_months.value).toBe(4);
+      expect(temp.very_cold_winter.value).toBe(-38);
+      expect(temp.arid_hot.value).toBe(18);
+      expect(precip.tropical_dry.value).toBe(60);
+      expect(precip.dry_summer_threshold.value).toBe(40);
     });
 
     it('should have complete threshold properties', () => {
@@ -124,19 +133,22 @@ describe('Köppen Preset Data', () => {
       const values = getThresholdValues(KOPPEN_PRESET);
 
       expect(values.tropical_min).toBe(18);
-      expect(values.cold_month_min).toBe(0);
+      expect(values.temperate_cold_min).toBe(0);
       expect(values.hot_summer).toBe(22);
-      expect(values.warm_months_threshold).toBe(10);
-      expect(values.warm_months_count).toBe(4);
+      expect(values.polar_tmax).toBe(10);
+      expect(values.icecap_tmax).toBe(0);
+      expect(values.warm_months).toBe(4);
+      expect(values.very_cold_winter).toBe(-38);
+      expect(values.arid_hot).toBe(18);
     });
 
     it('should include precipitation threshold values', () => {
       const values = getThresholdValues(KOPPEN_PRESET);
 
-      expect(values.dry_month).toBe(60);
+      expect(values.tropical_dry).toBe(60);
+      expect(values.dry_summer_threshold).toBe(40);
       expect(values.dry_season_factor).toBe(3);
       expect(values.monsoon_threshold).toBe(60);
-      expect(values.arid_summer_factor).toBe(0.7);
     });
 
     it('should return only values, not full threshold objects', () => {
@@ -151,8 +163,8 @@ describe('Köppen Preset Data', () => {
       const values = getThresholdValues(KOPPEN_PRESET);
       const keys = Object.keys(values);
 
-      // 5 temp + 4 precip = 9 total
-      expect(keys.length).toBe(9);
+      // 8 temp + 4 precip = 12 total
+      expect(keys.length).toBe(12);
     });
   });
 });

@@ -6,6 +6,9 @@
 import { createLegend, updateStats } from './legend.js';
 import { createTooltip, destroy as destroyTooltip } from './tooltip.js';
 import { createClimateInfo, showClimateInfo } from './climate-info.js';
+import header from './header.js';
+import shareModal from './share-modal.js';  // Story 6.3
+import sharedInfoBar from './shared-info-bar.js';  // Story 6.4
 
 let infoController = null;
 
@@ -14,6 +17,9 @@ export default {
    * Initialize all UI components
    */
   init() {
+    // Initialize header (donation button, etc.)
+    header.init();
+
     // Create legend
     const legendContainer = document.getElementById('legend-container');
     if (legendContainer) {
@@ -28,6 +34,12 @@ export default {
     if (infoPanel) {
       infoController = createClimateInfo(infoPanel);
     }
+
+    // Initialize share modal (Story 6.3)
+    shareModal.init();
+
+    // Initialize shared info bar (Story 6.4)
+    sharedInfoBar.init();
 
     console.log('[Koppen] UI module initialized');
   },
@@ -84,6 +96,8 @@ export default {
       infoController.destroy();
       infoController = null;
     }
+    shareModal.destroy();  // Story 6.3
+    sharedInfoBar.destroy();  // Story 6.4
     console.log('[Koppen] UI module destroyed');
   },
 };

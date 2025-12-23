@@ -4,7 +4,11 @@
  */
 
 let thresholds = {};
+let originalPreset = null; // Story 5.3: Store original for comparison
 let updateCallbacks = [];
+
+// Constants
+const THRESHOLD_SELECTOR = (key) => `.threshold-slider[data-threshold-key="${key}"]`;
 
 /**
  * Debounce utility
@@ -72,6 +76,158 @@ function getAllValues() {
 }
 
 /**
+ * Update modification indicator for a threshold (Story 5.3)
+ * @param {HTMLElement} container - Slider container
+ * @param {string} key - Threshold key
+ * @param {string} category - Category name
+ * @param {number} currentValue - Current value
+ * @param {string} unit - Unit string
+ */
+function updateModificationIndicator(container, key, category, currentValue, unit) {
+  if (!originalPreset) return;
+
+  const originalValue = originalPreset.thresholds?.[category]?.[key]?.value;
+  if (originalValue === undefined) return;
+
+  const indicator = container.querySelector('.threshold-slider__indicator');
+  const tooltip = container.querySelector('.threshold-slider__comparison-tooltip');
+  const resetBtn = container.querySelector('.threshold-slider__reset-btn');
+
+  // Validate elements exist before manipulating
+  if (!indicator || !tooltip || !resetBtn) {
+    console.warn('[Threshold] Modification indicator elements not found for:', key);
+    return;
+  }
+
+  const isModified = currentValue !== originalValue;
+
+  if (isModified) {
+    // Show indicator with direction-based color
+    indicator.style.display = 'inline-block';
+    indicator.className = 'threshold-slider__indicator';
+
+    if (currentValue < originalValue) {
+      indicator.classList.add('threshold-slider__indicator--decreased');
+    } else {
+      indicator.classList.add('threshold-slider__indicator--increased');
+    }
+
+    // Update tooltip content (CSS handles visibility on hover)
+    tooltip.textContent = `Original: ${originalValue}${unit} → Custom: ${currentValue}${unit}`;
+    tooltip.classList.add('threshold-slider__comparison-tooltip--has-content');
+
+    // Show reset button
+    resetBtn.style.display = 'inline-block';
+  } else {
+    // Hide all modification indicators
+    indicator.style.display = 'none';
+    tooltip.textContent = '';
+    tooltip.classList.remove('threshold-slider__comparison-tooltip--has-content');
+    resetBtn.style.display = 'none';
+  }
+
+  // Update modification summary
+  updateModificationSummary();
+}
+
+/**
+ * Reset individual threshold to original value (Story 5.3)
+ * @param {string} key - Threshold key
+ * @param {string} category - Category name
+ */
+function resetThreshold(key, category) {
+  if (!originalPreset) return;
+
+  const originalValue = originalPreset.thresholds?.[category]?.[key]?.value;
+  if (originalValue === undefined) return;
+
+  // Update threshold value
+  if (thresholds[category] && thresholds[category][key]) {
+    thresholds[category][key].value = originalValue;
+  }
+
+  // Update UI - cache DOM queries
+  const container = document.querySelector(THRESHOLD_SELECTOR(key));
+  if (!container) {
+    console.warn('[Threshold] Container not found for reset:', key);
+    return;
+  }
+
+  const textInput = container.querySelector('.threshold-slider__input');
+  const rangeInput = container.querySelector('.threshold-slider__range');
+
+  // Apply reset animation
+  container.classList.add('threshold-slider--resetting');
+  setTimeout(() => {
+    container.classList.remove('threshold-slider--resetting');
+  }, 300); // Match CSS animation duration
+
+  if (textInput) textInput.value = originalValue;
+  if (rangeInput) {
+    rangeInput.value = originalValue;
+    rangeInput.setAttribute('aria-valuenow', originalValue);
+  }
+
+  const unit = thresholds[category][key].unit;
+  updateModificationIndicator(container, key, category, originalValue, unit);
+
+  // Fire change event
+  handleThresholdChange(key, originalValue, category, thresholds[category][key]);
+
+  // Fire reset event
+  document.dispatchEvent(
+    new CustomEvent('koppen:threshold-reset', {
+      detail: { key, category, value: originalValue },
+    })
+  );
+}
+
+/**
+ * Get modification summary (Story 5.3)
+ * @returns {Object} Summary with modified count and total
+ */
+function getModificationSummary() {
+  if (!originalPreset) {
+    return { modified: 0, total: 0, percentage: 0 };
+  }
+
+  let totalThresholds = 0;
+  let modifiedCount = 0;
+
+  Object.keys(thresholds).forEach((category) => {
+    Object.keys(thresholds[category]).forEach((key) => {
+      totalThresholds++;
+      const currentValue = thresholds[category][key].value;
+      const originalValue = originalPreset.thresholds?.[category]?.[key]?.value;
+
+      if (originalValue !== undefined && currentValue !== originalValue) {
+        modifiedCount++;
+      }
+    });
+  });
+
+  return {
+    modified: modifiedCount,
+    total: totalThresholds,
+    percentage: totalThresholds > 0 ? Math.round((modifiedCount / totalThresholds) * 100) : 0,
+  };
+}
+
+/**
+ * Update modification summary display (Story 5.3)
+ * Debounced to avoid excessive event firing during slider drag
+ */
+const updateModificationSummary = debounce(() => {
+  const summary = getModificationSummary();
+
+  document.dispatchEvent(
+    new CustomEvent('koppen:modification-summary-changed', {
+      detail: summary,
+    })
+  );
+}, 100);
+
+/**
  * Create individual slider with label and input
  * @param {string} key - Threshold key
  * @param {Object} config - Threshold configuration
@@ -84,12 +240,30 @@ function createSlider(key, config, category) {
   container.dataset.thresholdKey = key;
   container.dataset.category = category;
 
-  // Label
+  // Label with modification indicator (Story 5.3)
+  const labelRow = document.createElement('div');
+  labelRow.className = 'threshold-slider__label-row';
+
   const label = document.createElement('label');
   label.className = 'threshold-slider__label';
   label.htmlFor = `threshold-${key}`;
   label.textContent = config.description;
-  container.appendChild(label);
+
+  // Modification indicator badge
+  const indicator = document.createElement('span');
+  indicator.className = 'threshold-slider__indicator';
+  indicator.style.display = 'none';
+  indicator.setAttribute('aria-label', 'Modified');
+
+  // Inline tooltip for comparison
+  const tooltip = document.createElement('div');
+  tooltip.className = 'threshold-slider__comparison-tooltip';
+  tooltip.style.display = 'none';
+
+  labelRow.appendChild(label);
+  labelRow.appendChild(indicator);
+  container.appendChild(labelRow);
+  container.appendChild(tooltip);
 
   // Value display + input wrapper
   const valueWrapper = document.createElement('div');
@@ -111,8 +285,20 @@ function createSlider(key, config, category) {
   unit.className = 'threshold-slider__unit';
   unit.textContent = config.unit;
 
+  // Individual reset button (Story 5.3)
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'threshold-slider__reset-btn';
+  resetBtn.textContent = '↺';
+  resetBtn.style.display = 'none';
+  resetBtn.setAttribute('aria-label', `Reset ${config.description} to original`);
+  resetBtn.addEventListener('click', () => {
+    resetThreshold(key, category);
+  });
+
   valueWrapper.appendChild(textInput);
   valueWrapper.appendChild(unit);
+  valueWrapper.appendChild(resetBtn);
   container.appendChild(valueWrapper);
 
   // Range slider
@@ -143,6 +329,7 @@ function createSlider(key, config, category) {
     rangeInput.setAttribute('aria-valuenow', value);
     rangeInput.setAttribute('aria-valuetext', `${value} ${config.unit}`);
     debouncedUpdate(value);
+    updateModificationIndicator(container, key, category, value, config.unit);
   });
 
   textInput.addEventListener('change', (e) => {
@@ -156,6 +343,7 @@ function createSlider(key, config, category) {
     value = Math.round(value / config.step) * config.step;
 
     textInput.value = value;
+    updateModificationIndicator(container, key, category, value, config.unit);
     rangeInput.value = value;
     rangeInput.setAttribute('aria-valuenow', value);
     rangeInput.setAttribute('aria-valuetext', `${value} ${config.unit}`);
@@ -203,6 +391,8 @@ export default {
    */
   init(preset, onChange) {
     thresholds = preset.thresholds;
+    // Store original preset for comparison (Story 5.3)
+    originalPreset = JSON.parse(JSON.stringify(preset)); // Deep clone
     if (onChange) updateCallbacks.push(onChange);
   },
 
@@ -267,6 +457,85 @@ export default {
     document.dispatchEvent(
       new CustomEvent('koppen:thresholds-reset', {
         detail: { thresholds: getAllValues() },
+      })
+    );
+  },
+
+  /**
+   * Set threshold values from imported data (Story 6.5)
+   * @param {Object} newThresholds - Threshold values to apply
+   */
+  setValues(newThresholds) {
+    // Merge new values into existing threshold structure
+    Object.keys(newThresholds).forEach((category) => {
+      if (!thresholds[category]) {
+        thresholds[category] = {};
+      }
+
+      Object.keys(newThresholds[category]).forEach((key) => {
+        const newValue = newThresholds[category][key];
+
+        // Handle both full object and value-only formats
+        if (typeof newValue === 'object' && newValue.value !== undefined) {
+          // Full threshold object
+          if (!thresholds[category][key]) {
+            thresholds[category][key] = {};
+          }
+          thresholds[category][key].value = newValue.value;
+        } else if (typeof newValue === 'number') {
+          // Value-only format
+          if (!thresholds[category][key]) {
+            thresholds[category][key] = {};
+          }
+          thresholds[category][key].value = newValue;
+        }
+      });
+    });
+
+    // Update all slider DOM elements
+    document.querySelectorAll('.threshold-slider').forEach((slider) => {
+      const key = slider.dataset.thresholdKey;
+      const category = slider.dataset.category;
+      const config = thresholds[category]?.[key];
+
+      if (!config) return;
+
+      const rangeInput = slider.querySelector('.threshold-slider__range');
+      const textInput = slider.querySelector('.threshold-slider__input');
+
+      if (rangeInput && textInput) {
+        rangeInput.value = config.value;
+        textInput.value = config.value;
+        rangeInput.setAttribute('aria-valuenow', config.value);
+        rangeInput.setAttribute(
+          'aria-valuetext',
+          `${config.value} ${config.unit || ''}`
+        );
+
+        // Update modification indicator (Story 5.3)
+        const container = slider;
+        updateModificationIndicator(
+          container,
+          key,
+          category,
+          config.value,
+          config.unit || ''
+        );
+      }
+    });
+
+    // Fire threshold changed events for all values
+    const allValues = getAllValues();
+    document.dispatchEvent(
+      new CustomEvent('koppen:thresholds-imported', {
+        detail: { thresholds: allValues },
+      })
+    );
+
+    // Re-render map with new values
+    document.dispatchEvent(
+      new CustomEvent('koppen:threshold-changed', {
+        detail: { thresholds: allValues },
       })
     );
   },

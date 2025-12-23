@@ -16,7 +16,39 @@
         <nav class="header__nav">
           <button id="create-btn" class="header__btn">Create</button>
           <button id="about-btn" class="header__btn">About</button>
-          <a href="https://ko-fi.com/koppen" target="_blank" rel="noopener" class="header__btn header__btn--donate">Support</a>
+          <div class="export-controls">
+            <button
+              class="export-button"
+              data-export-png
+              disabled
+              aria-label="Export map as PNG image"
+            >
+              <svg class="export-button__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M14.5 4H11.5L10.5 2H5.5L4.5 4H1.5C1.10218 4 0.720644 4.15804 0.43934 4.43934C0.158035 4.72064 0 5.10218 0 5.5V13C0 13.3978 0.158035 13.7794 0.43934 14.0607C0.720644 14.342 1.10218 14.5 1.5 14.5H14.5C14.8978 14.5 15.2794 14.342 15.5607 14.0607C15.842 13.7794 16 13.3978 16 13V5.5C16 5.10218 15.842 4.72064 15.5607 4.43934C15.2794 4.15804 14.8978 4 14.5 4ZM8 12C7.20887 12 6.43552 11.7654 5.77772 11.3259C5.11992 10.8864 4.60723 10.2616 4.30448 9.53074C4.00173 8.79983 3.92252 7.99556 4.07686 7.21964C4.2312 6.44372 4.61216 5.73098 5.17157 5.17157C5.73098 4.61216 6.44372 4.2312 7.21964 4.07686C7.99556 3.92252 8.79983 4.00173 9.53074 4.30448C10.2616 4.60723 10.8864 5.11992 11.3259 5.77772C11.7654 6.43552 12 7.20887 12 8C12 9.06087 11.5786 10.0783 10.8284 10.8284C10.0783 11.5786 9.06087 12 8 12Z" fill="currentColor"/>
+              </svg>
+              Export
+            </button>
+            <label class="export-option" title="Include legend in exported image">
+              <input
+                type="checkbox"
+                data-export-legend
+                checked
+                aria-label="Include legend in export"
+              />
+              <span class="export-option__text">Legend</span>
+            </label>
+          </div>
+          <a
+            href="https://ko-fi.com/koppen"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="donation-button"
+            data-donation-button
+            aria-label="Support this project on Ko-fi"
+          >
+            <span class="donation-button__icon" aria-hidden="true">☕</span>
+            <span class="donation-button__text">Support</span>
+          </a>
         </nav>
       </header>
       <main class="main">

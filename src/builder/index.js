@@ -5,11 +5,20 @@
 
 import presetLoader from './preset-loader.js';
 import thresholdSliders from './threshold-sliders.js';
+import comparison from './comparison.js';
+import shareModal from '../ui/share-modal.js';  // Story 6.3
+import exportModule from '../export/index.js';  // Story 6.5
+import stateManager from '../utils/state-manager.js';  // Story 6.6
 
 let builderPanel = null;
 let isOpen = false;
 let dataLoaded = false;
 let eventListeners = []; // Track event listeners for cleanup
+
+// Fork state management (Story 6.6)
+let currentClassification = null;
+let originalClassification = null; // Store original for comparison
+let isForkMode = false;
 
 /**
  * Setup event listeners
@@ -41,6 +50,16 @@ function setupEventListeners() {
   };
   document.addEventListener('keydown', keydownHandler);
   eventListeners.push({ event: 'keydown', handler: keydownHandler });
+
+  // Fork classification event (Story 6.6)
+  const forkHandler = (e) => {
+    const { classification, sourceURL } = e.detail || {};
+    if (classification) {
+      forkClassification(classification, sourceURL);
+    }
+  };
+  document.addEventListener('koppen:fork-requested', forkHandler);
+  eventListeners.push({ event: 'koppen:fork-requested', handler: forkHandler });
 }
 
 /**
@@ -114,6 +133,25 @@ function createHeader() {
   });
 
   header.appendChild(nameInput);
+
+  // Share button (Story 6.3)
+  const shareBtn = document.createElement('button');
+  shareBtn.type = 'button';
+  shareBtn.className = 'builder-panel__share-btn';
+  shareBtn.setAttribute('data-share-classification', '');
+  shareBtn.setAttribute('aria-label', 'Share classification via URL');
+  shareBtn.textContent = '🔗 Share';
+
+  shareBtn.addEventListener('click', () => {
+    // Get current classification state
+    const name = nameInput.value || 'My Classification';
+    const thresholds = thresholdSliders.getAllValues();
+
+    // Open share modal
+    shareModal.open({ name, thresholds });
+  });
+
+  header.appendChild(shareBtn);
 
   return header;
 }
@@ -308,6 +346,11 @@ async function startFromKoppen() {
     // Initialize threshold sliders
     thresholdSliders.init(preset);
 
+    // Initialize comparison module with Köppen classification
+    comparison.init({
+      koppenClassification: preset.classification || preset,
+    });
+
     // Clear content and render threshold editor
     const content = builderPanel.querySelector('.builder-panel__content');
     if (content) {
@@ -319,9 +362,17 @@ async function startFromKoppen() {
       const attribution = createPresetAttribution(preset);
       content.appendChild(attribution);
 
+      // Add comparison tabs (Story 5.1)
+      const comparisonTabs = comparison.createUI();
+      content.appendChild(comparisonTabs);
+
       // Render threshold sliders
       const sliders = thresholdSliders.render(preset);
       content.appendChild(sliders);
+
+      // Add export/import section (Story 6.5)
+      const exportSection = createExportSection();
+      content.appendChild(exportSection);
     }
   } catch (error) {
     // Show error with retry option
@@ -341,10 +392,27 @@ async function startFromKoppen() {
  */
 function startFromScratch() {
   try {
+    // Guard against null builderPanel (module destroyed during async operation)
+    if (!builderPanel) {
+      console.warn('[Koppen] Builder panel not available');
+      return;
+    }
+
     // Import scratch preset
-    import('../climate/presets.js').then(({ SCRATCH_PRESET }) => {
+    import('../climate/presets.js').then(({ SCRATCH_PRESET, KOPPEN_PRESET }) => {
+      // Guard against null builderPanel (module destroyed during async operation)
+      if (!builderPanel) {
+        console.warn('[Koppen] Builder panel was destroyed during preset load');
+        return;
+      }
+
       // Initialize threshold sliders
       thresholdSliders.init(SCRATCH_PRESET);
+
+      // Initialize comparison module with Koppen as baseline
+      comparison.init({
+        koppenClassification: KOPPEN_PRESET.classification || KOPPEN_PRESET,
+      });
 
       // Clear content and render scratch mode
       const content = builderPanel.querySelector('.builder-panel__content');
@@ -357,9 +425,17 @@ function startFromScratch() {
         const helpMessage = createHelpMessage();
         content.appendChild(helpMessage);
 
+        // Add comparison tabs (Story 5.1)
+        const comparisonTabs = comparison.createUI();
+        content.appendChild(comparisonTabs);
+
         // Render threshold sliders
         const sliders = thresholdSliders.render(SCRATCH_PRESET);
         content.appendChild(sliders);
+
+        // Add export/import section (Story 6.5)
+        const exportSection = createExportSection();
+        content.appendChild(exportSection);
 
         // Show reset to Köppen button
         const resetSection = createResetSection();
@@ -425,6 +501,149 @@ function createResetSection() {
   });
 
   section.appendChild(button);
+
+  return section;
+}
+
+/**
+ * Create export section with JSON export/import buttons (Story 6.5)
+ * @returns {HTMLElement} Export section element
+ */
+function createExportSection() {
+  const section = document.createElement('div');
+  section.className = 'builder-panel__export-section';
+
+  const heading = document.createElement('h3');
+  heading.className = 'builder-panel__export-heading';
+  heading.textContent = 'Export & Import';
+
+  // Export JSON button
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'builder-panel__export-json-btn';
+  exportBtn.setAttribute('data-export-json', '');
+  exportBtn.setAttribute('aria-label', 'Export classification as JSON file');
+
+  const exportIcon = document.createElement('span');
+  exportIcon.setAttribute('aria-hidden', 'true');
+  exportIcon.textContent = '📥';
+  exportBtn.appendChild(exportIcon);
+  exportBtn.appendChild(document.createTextNode(' Export JSON'));
+
+  exportBtn.addEventListener('click', async () => {
+    try {
+      // Get current classification state
+      const nameInput = document.getElementById('classification-name');
+      const name = nameInput?.value || 'My Classification';
+      const thresholds = thresholdSliders.getAllValues();
+
+      // Get current map view (lat, lon, zoom)
+      const view = null; // TODO: Get from map module when available
+
+      // Export JSON file
+      await exportModule.exportJSONFile({ name, thresholds, view });
+
+      // Show success feedback
+      exportBtn.textContent = '✓ Exported!';
+      setTimeout(() => {
+        exportBtn.textContent = '';
+        const icon = document.createElement('span');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '📥';
+        exportBtn.appendChild(icon);
+        exportBtn.appendChild(document.createTextNode(' Export JSON'));
+      }, 2000);
+    } catch (error) {
+      console.error('[Koppen] Export failed:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  });
+
+  // Import JSON button and hidden file input
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'builder-panel__import-json-btn';
+  importBtn.setAttribute('data-import-json', '');
+  importBtn.setAttribute('aria-label', 'Import classification from JSON file');
+
+  const importIcon = document.createElement('span');
+  importIcon.setAttribute('aria-hidden', 'true');
+  importIcon.textContent = '📤';
+  importBtn.appendChild(importIcon);
+  importBtn.appendChild(document.createTextNode(' Import JSON'));
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+  fileInput.style.display = 'none';
+  fileInput.setAttribute('aria-label', 'Select JSON file to import');
+
+  // Click import button triggers file picker
+  importBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  // Handle file selection
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      importBtn.disabled = true;
+      importBtn.textContent = 'Importing...';
+
+      // Import and parse JSON
+      const classification = await exportModule.importJSONFile(file);
+
+      // Apply imported classification
+      const nameInput = document.getElementById('classification-name');
+      if (nameInput) {
+        nameInput.value = classification.name;
+      }
+
+      // Load thresholds into sliders
+      thresholdSliders.setValues(classification.thresholds);
+
+      // Show success feedback
+      importBtn.textContent = '✓ Imported!';
+      setTimeout(() => {
+        importBtn.textContent = '';
+        const icon = document.createElement('span');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '📤';
+        importBtn.appendChild(icon);
+        importBtn.appendChild(document.createTextNode(' Import JSON'));
+        importBtn.disabled = false;
+      }, 2000);
+
+      // Reset file input
+      fileInput.value = '';
+
+      // Fire classification-imported event
+      document.dispatchEvent(new CustomEvent('koppen:classification-imported', {
+        detail: { name: classification.name, version: classification.version }
+      }));
+    } catch (error) {
+      console.error('[Koppen] Import failed:', error);
+      alert(`Import failed: ${error.message}`);
+
+      importBtn.textContent = '';
+      const icon = document.createElement('span');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '📤';
+      importBtn.appendChild(icon);
+      importBtn.appendChild(document.createTextNode(' Import JSON'));
+      importBtn.disabled = false;
+
+      // Reset file input
+      fileInput.value = '';
+    }
+  });
+
+  section.appendChild(heading);
+  section.appendChild(exportBtn);
+  section.appendChild(importBtn);
+  section.appendChild(fileInput);
 
   return section;
 }
@@ -568,6 +787,136 @@ function toggle() {
   isOpen ? close() : open();
 }
 
+/**
+ * Fork a shared classification and enter edit mode (Story 6.6)
+ * @param {Object} classification - Shared classification to fork
+ * @param {string} [sourceURL=null] - Original URL (optional)
+ */
+function forkClassification(classification, sourceURL = null) {
+  console.log('[Koppen] Forking classification:', classification.name);
+
+  try {
+    // Create fork with metadata
+    const forked = stateManager.forkClassification(classification, sourceURL);
+
+    // Store original for comparison
+    originalClassification = stateManager.deepClone(classification);
+
+    // Store current classification
+    currentClassification = forked;
+
+    // Mark as fork mode
+    isForkMode = true;
+
+    // Update name field
+    const nameInput = document.getElementById('classification-name');
+    if (nameInput) {
+      nameInput.value = forked.name;
+    }
+
+    // Load thresholds into sliders
+    if (forked.thresholds) {
+      thresholdSliders.setValues(forked.thresholds);
+    }
+
+    // Show builder panel if hidden
+    if (!isOpen) {
+      open();
+    }
+
+    // Show fork indicator
+    showForkIndicator(forked, originalClassification);
+
+    // Fire classification-forked event
+    document.dispatchEvent(new CustomEvent('koppen:classification-forked', {
+      detail: {
+        original: classification,
+        forked,
+        sourceURL,
+      },
+    }));
+
+    console.log('[Koppen] Fork created:', forked.name);
+
+  } catch (error) {
+    console.error('[Koppen] Fork failed:', error);
+
+    // Fire error event
+    document.dispatchEvent(new CustomEvent('koppen:fork-failed', {
+      detail: { error: error.message },
+    }));
+
+    throw error;
+  }
+}
+
+/**
+ * Show fork indicator in builder panel (Story 6.6)
+ * @param {Object} forked - Forked classification
+ * @param {Object} original - Original classification
+ */
+function showForkIndicator(forked, original) {
+  if (!builderPanel) return;
+
+  // Remove existing indicator
+  const existingIndicator = builderPanel.querySelector('.builder-fork-indicator');
+  if (existingIndicator) {
+    existingIndicator.remove();
+  }
+
+  // Create new indicator
+  const indicator = document.createElement('div');
+  indicator.className = 'builder-fork-indicator';
+
+  const icon = document.createElement('span');
+  icon.className = 'builder-fork-indicator__icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '🔀';
+
+  const text = document.createElement('span');
+  text.className = 'builder-fork-indicator__text';
+  text.textContent = `Forked from: ${original.name}`;
+
+  indicator.appendChild(icon);
+  indicator.appendChild(text);
+
+  // Insert at top of builder panel content
+  const content = builderPanel.querySelector('.builder-panel__content');
+  if (content && content.firstChild) {
+    content.insertBefore(indicator, content.firstChild);
+  }
+}
+
+/**
+ * Get current classification state (Story 6.6)
+ * @returns {Object} Current classification with current threshold values
+ */
+function getCurrentClassification() {
+  if (!currentClassification) {
+    // Return default classification if none loaded
+    const nameInput = document.getElementById('classification-name');
+    return {
+      name: nameInput?.value || 'My Classification',
+      thresholds: thresholdSliders.getAllValues(),
+    };
+  }
+
+  // Return current classification with latest threshold values
+  return {
+    ...currentClassification,
+    thresholds: thresholdSliders.getAllValues(),
+    metadata: {
+      ...(currentClassification.metadata || {}),
+      modified: originalClassification
+        ? stateManager.isModified(
+            { thresholds: thresholdSliders.getAllValues() },
+            originalClassification
+          )
+        : false,
+    },
+  };
+}
+
 export default {
   /**
    * Initialize the builder module
@@ -614,6 +963,16 @@ export default {
   isOpen() {
     return isOpen;
   },
+
+  /**
+   * Fork a shared classification (Story 6.6)
+   */
+  forkClassification,
+
+  /**
+   * Get current classification state (Story 6.6)
+   */
+  getCurrentClassification,
 
   /**
    * Destroy the module

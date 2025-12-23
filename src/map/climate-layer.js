@@ -6,7 +6,10 @@
 import L from 'leaflet';
 import { getClimateColor } from '../utils/colors.js';
 import { CLIMATE_TYPES, KOPPEN_RULES } from '../climate/koppen-rules.js';
-import { KOPPEN_PRESET } from '../climate/presets.js';
+import { KOPPEN_PRESET, getThresholdValues } from '../climate/presets.js';
+
+// Cache the default thresholds as a flat object for the classify function
+const DEFAULT_THRESHOLDS = getThresholdValues(KOPPEN_PRESET);
 
 let climateLayer = null;
 let classifiedFeatures = null;
@@ -41,7 +44,7 @@ const DIMMED_STYLE = {
  * @param {Object} thresholds - Classification thresholds
  * @returns {Array} Classified features
  */
-function classifyFeatures(features, thresholds = KOPPEN_PRESETS.koppen) {
+function classifyFeatures(features, thresholds = DEFAULT_THRESHOLDS) {
   return features.map(feature => {
     const props = feature.properties;
 

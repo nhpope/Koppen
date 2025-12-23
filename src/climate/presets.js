@@ -19,14 +19,14 @@ export const KOPPEN_PRESET = {
       tropical_min: {
         value: 18,
         unit: '°C',
-        description: 'Minimum temperature for tropical (A) climates',
+        description: 'Minimum coldest month temperature for tropical (A) climates',
         range: [10, 25],
         step: 0.5,
       },
-      cold_month_min: {
+      temperate_cold_min: {
         value: 0,
         unit: '°C',
-        description: 'C/D boundary - coldest month threshold',
+        description: 'C/D boundary - coldest month threshold (C if > this value)',
         range: [-10, 10],
         step: 0.5,
       },
@@ -37,29 +37,57 @@ export const KOPPEN_PRESET = {
         range: [18, 28],
         step: 0.5,
       },
-      warm_months_threshold: {
+      polar_tmax: {
         value: 10,
         unit: '°C',
-        description: 'Tundra (ET) threshold - warmest month',
+        description: 'Polar (E) threshold - warmest month must be below this',
         range: [0, 15],
         step: 0.5,
       },
-      warm_months_count: {
+      icecap_tmax: {
+        value: 0,
+        unit: '°C',
+        description: 'Ice cap (EF) threshold - warmest month below this',
+        range: [-10, 5],
+        step: 0.5,
+      },
+      warm_months: {
         value: 4,
         unit: 'months',
-        description: 'Number of months ≥10°C for c vs d',
+        description: 'Number of months ≥10°C for b vs c classification',
         range: [1, 6],
         step: 1,
+      },
+      very_cold_winter: {
+        value: -38,
+        unit: '°C',
+        description: 'Extreme cold winter threshold for d suffix',
+        range: [-50, -20],
+        step: 1,
+      },
+      arid_hot: {
+        value: 18,
+        unit: '°C',
+        description: 'Hot (h) vs cold (k) arid climate threshold (MAT)',
+        range: [10, 25],
+        step: 0.5,
       },
     },
 
     // Precipitation thresholds
     precipitation: {
-      dry_month: {
+      tropical_dry: {
         value: 60,
         unit: 'mm',
-        description: 'Dry month threshold for s/w suffixes',
-        range: [20, 100],
+        description: 'Dry month threshold for Af classification',
+        range: [40, 100],
+        step: 5,
+      },
+      dry_summer_threshold: {
+        value: 40,
+        unit: 'mm',
+        description: 'Summer dry month threshold for s suffix',
+        range: [20, 60],
         step: 5,
       },
       dry_season_factor: {
@@ -75,13 +103,6 @@ export const KOPPEN_PRESET = {
         description: 'Annual precip - 25×driest month for Am',
         range: [40, 100],
         step: 5,
-      },
-      arid_summer_factor: {
-        value: 0.7,
-        unit: 'ratio',
-        description: 'Summer precipitation ratio for P_threshold',
-        range: [0.5, 1.0],
-        step: 0.05,
       },
     },
   },
@@ -138,19 +159,19 @@ export const SCRATCH_PRESET = {
   citation: 'Custom classification system',
 
   thresholds: {
-    // Temperature thresholds - set to extremes
+    // Temperature thresholds - set to extremes so everything starts unclassified
     temperature: {
       tropical_min: {
         value: 30,  // Extreme high (nothing will be tropical)
         unit: '°C',
-        description: 'Minimum temperature for tropical (A) climates',
+        description: 'Minimum coldest month temperature for tropical (A) climates',
         range: [10, 25],
         step: 0.5,
       },
-      cold_month_min: {
-        value: -50,  // Extreme low
+      temperate_cold_min: {
+        value: -50,  // Extreme low (everything will be C, not D)
         unit: '°C',
-        description: 'C/D boundary - coldest month threshold',
+        description: 'C/D boundary - coldest month threshold (C if > this value)',
         range: [-10, 10],
         step: 0.5,
       },
@@ -161,29 +182,57 @@ export const SCRATCH_PRESET = {
         range: [18, 28],
         step: 0.5,
       },
-      warm_months_threshold: {
-        value: 50,  // Extreme high
+      polar_tmax: {
+        value: -50,  // Extreme low (nothing will be polar)
         unit: '°C',
-        description: 'Tundra (ET) threshold - warmest month',
+        description: 'Polar (E) threshold - warmest month must be below this',
         range: [0, 15],
         step: 0.5,
       },
-      warm_months_count: {
+      icecap_tmax: {
+        value: -80,  // Extreme low
+        unit: '°C',
+        description: 'Ice cap (EF) threshold - warmest month below this',
+        range: [-10, 5],
+        step: 0.5,
+      },
+      warm_months: {
         value: 12,  // Extreme (nothing will qualify)
         unit: 'months',
-        description: 'Number of months ≥10°C for c vs d',
+        description: 'Number of months ≥10°C for b vs c classification',
         range: [1, 6],
         step: 1,
+      },
+      very_cold_winter: {
+        value: -80,  // Extreme low
+        unit: '°C',
+        description: 'Extreme cold winter threshold for d suffix',
+        range: [-50, -20],
+        step: 1,
+      },
+      arid_hot: {
+        value: 50,  // Extreme high
+        unit: '°C',
+        description: 'Hot (h) vs cold (k) arid climate threshold (MAT)',
+        range: [10, 25],
+        step: 0.5,
       },
     },
 
     // Precipitation thresholds - set to extremes
     precipitation: {
-      dry_month: {
-        value: 500,  // Extreme high (nothing will be dry)
+      tropical_dry: {
+        value: 500,  // Extreme high (nothing will be Af)
         unit: 'mm',
-        description: 'Dry month threshold for s/w suffixes',
-        range: [20, 100],
+        description: 'Dry month threshold for Af classification',
+        range: [40, 100],
+        step: 5,
+      },
+      dry_summer_threshold: {
+        value: 0,  // Extreme low (everything will have dry summer)
+        unit: 'mm',
+        description: 'Summer dry month threshold for s suffix',
+        range: [20, 60],
         step: 5,
       },
       dry_season_factor: {
@@ -199,13 +248,6 @@ export const SCRATCH_PRESET = {
         description: 'Annual precip - 25×driest month for Am',
         range: [40, 100],
         step: 5,
-      },
-      arid_summer_factor: {
-        value: 2.0,  // Extreme high
-        unit: 'ratio',
-        description: 'Summer precipitation ratio for P_threshold',
-        range: [0.5, 1.0],
-        step: 0.05,
       },
     },
   },
