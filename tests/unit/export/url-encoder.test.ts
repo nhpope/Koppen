@@ -14,13 +14,13 @@ describe('URL Encoder', () => {
     thresholds: {
       temperature: {
         tropical_min: {
-          value: 20,  // Modified from Koppen's 18
+          value: 20,  // Modified from Köppen's 18
         },
         temperate_cold_min: {
-          value: 0,  // Same as Koppen (should not be included)
+          value: -3,  // Same as Köppen standard (should not be included)
         },
         hot_summer: {
-          value: 24,  // Modified from Koppen's 22
+          value: 24,  // Modified from Köppen's 22
         },
       },
       precipitation: {
@@ -70,8 +70,8 @@ describe('URL Encoder', () => {
       expect(decoded?.thresholds.temperature.hot_summer.value).toBe(24);
       expect(decoded?.thresholds.precipitation.monsoon_threshold.value).toBe(70);
 
-      // Unmodified values should match Koppen
-      expect(decoded?.thresholds.temperature.temperate_cold_min.value).toBe(0);
+      // Unmodified values should match Köppen defaults
+      expect(decoded?.thresholds.temperature.temperate_cold_min.value).toBe(-3); // Köppen standard
       expect(decoded?.thresholds.precipitation.tropical_dry.value).toBe(60);
     });
 
@@ -164,7 +164,7 @@ describe('URL Encoder', () => {
       // Modified values
       expect(decoded?.thresholds.temperature.tropical_min.value).toBe(20);
 
-      // Koppen defaults for unmodified
+      // Köppen defaults for unmodified (should be -3°C standard)
       expect(decoded?.thresholds.temperature.temperate_cold_min.value).toBe(
         KOPPEN_PRESET.thresholds.temperature.temperate_cold_min.value
       );

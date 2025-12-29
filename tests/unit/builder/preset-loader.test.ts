@@ -53,7 +53,7 @@ describe('Köppen Preset Data', () => {
       const precip = KOPPEN_PRESET.thresholds.precipitation;
 
       expect(temp.tropical_min.value).toBe(18);
-      expect(temp.temperate_cold_min.value).toBe(0);
+      expect(temp.temperate_cold_min.value).toBe(-3); // Köppen standard C/D boundary
       expect(temp.hot_summer.value).toBe(22);
       expect(temp.polar_tmax.value).toBe(10);
       expect(temp.icecap_tmax.value).toBe(0);
@@ -133,7 +133,7 @@ describe('Köppen Preset Data', () => {
       const values = getThresholdValues(KOPPEN_PRESET);
 
       expect(values.tropical_min).toBe(18);
-      expect(values.temperate_cold_min).toBe(0);
+      expect(values.temperate_cold_min).toBe(-3); // Köppen standard C/D boundary
       expect(values.hot_summer).toBe(22);
       expect(values.polar_tmax).toBe(10);
       expect(values.icecap_tmax).toBe(0);

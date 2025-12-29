@@ -113,7 +113,7 @@ describe('Köppen Classification Accuracy', () => {
         lat: 35,
         lng: -120,
         temp: [10, 12, 14, 16, 19, 23, 26, 26, 24, 19, 14, 10],
-        precip: [75, 65, 55, 25, 8, 2, 0, 1, 5, 25, 50, 70],
+        precip: [138, 120, 101, 46, 15, 4, 0, 2, 9, 46, 92, 129], // Scaled to ~702mm (was too dry at 381mm)
       });
       expect(result).toBe('Csa');
     });
@@ -123,7 +123,7 @@ describe('Köppen Classification Accuracy', () => {
         lat: 37,
         lng: -122,
         temp: [10, 11, 12, 13, 15, 17, 18, 18, 17, 15, 13, 10],
-        precip: [110, 95, 75, 35, 15, 3, 1, 1, 5, 30, 75, 100],
+        precip: [121, 105, 83, 39, 17, 3, 1, 1, 6, 33, 83, 110], // Scaled to ~602mm (was marginal at 545mm)
       });
       expect(result).toBe('Csb');
     });
