@@ -4,7 +4,7 @@
  */
 
 import { test as base, expect, Page } from '@playwright/test';
-import mockClimateTiny from '../fixtures/mock-climate-tiny.json';
+import mockClimateTiny from '../fixtures/mock-climate-tiny.json' with { type: 'json' };
 
 /**
  * Extended test fixture with Koppen-specific helpers
