@@ -92,6 +92,48 @@ function setupEventListeners() {
     });
   }
 
+  // Keyboard map navigation (WCAG 2.1.1 - keyboard accessible)
+  document.addEventListener('keydown', (e) => {
+    // Only handle arrow keys when not focused on input/textarea
+    if (e.target.matches('input, textarea, select')) {
+      return;
+    }
+
+    const panAmount = 50; // pixels to pan
+    const map = app.modules.map?.getMap?.();
+
+    if (!map) return;
+
+    switch(e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        map.panBy([0, -panAmount]);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        map.panBy([0, panAmount]);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        map.panBy([-panAmount, 0]);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        map.panBy([panAmount, 0]);
+        break;
+      case '+':
+      case '=':
+        e.preventDefault();
+        map.zoomIn();
+        break;
+      case '-':
+      case '_':
+        e.preventDefault();
+        map.zoomOut();
+        break;
+    }
+  });
+
   // Climate data loaded
   document.addEventListener('koppen:data-loaded', (e) => {
     console.log(`[Koppen] Data loaded: ${e.detail.features} features`);
@@ -264,10 +306,17 @@ function showError(message) {
   const app = document.getElementById('app');
   const errorDiv = document.createElement('div');
   errorDiv.className = 'error-message';
-  errorDiv.innerHTML = `
-    <p>${message}</p>
-    <button onclick="location.reload()">Reload</button>
-  `;
+
+  // Use textContent to prevent XSS
+  const p = document.createElement('p');
+  p.textContent = message;
+
+  const button = document.createElement('button');
+  button.textContent = 'Reload';
+  button.addEventListener('click', () => location.reload());
+
+  errorDiv.appendChild(p);
+  errorDiv.appendChild(button);
   app.prepend(errorDiv);
 }
 

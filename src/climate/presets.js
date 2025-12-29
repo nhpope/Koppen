@@ -24,9 +24,9 @@ export const KOPPEN_PRESET = {
         step: 0.5,
       },
       temperate_cold_min: {
-        value: 0,
+        value: -3,
         unit: '°C',
-        description: 'C/D boundary - coldest month threshold (C if > this value)',
+        description: 'C/D boundary - coldest month threshold (C if >= this value, standard Köppen uses -3°C)',
         range: [-10, 10],
         step: 0.5,
       },

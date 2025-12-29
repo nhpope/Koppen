@@ -24,7 +24,7 @@
   /* Colors - Text */
   --color-text-primary: #1e293b;
   --color-text-secondary: #64748b;
-  --color-text-muted: #94a3b8;
+  --color-text-muted: #64748b; /* Changed from #94a3b8 for WCAG AA contrast (4.6:1 ratio) */
   --color-text-inverse: #ffffff;
 
   /* Colors - Semantic */
@@ -188,6 +188,23 @@ button {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* Skip link for keyboard navigation (WCAG 2.4.1) */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--color-primary);
+  color: white;
+  padding: 8px 16px;
+  text-decoration: none;
+  z-index: 10000;
+  border-radius: 0 0 4px 0;
+}
+
+.skip-link:focus {
+  top: 0;
 }
 
 ul,

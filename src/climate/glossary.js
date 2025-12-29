@@ -32,7 +32,7 @@ export const GLOSSARY = {
     term: 'Pthreshold',
     fullName: 'Aridity Threshold',
     definition: 'The precipitation threshold that determines if a climate is arid (B). It accounts for temperature and seasonal precipitation distribution.',
-    formula: 'If ≥70% rain in summer: Pth = 2×MAT + 28\nIf ≥70% rain in winter: Pth = 2×MAT\nOtherwise: Pth = 2×MAT + 14',
+    formula: 'If ≥70% rain in winter: Pth = 20×MAT + 280\nIf ≥70% rain in summer: Pth = 20×MAT + 140\nOtherwise: Pth = 20×MAT + 140',
   },
   Pdry: {
     term: 'Pdry',

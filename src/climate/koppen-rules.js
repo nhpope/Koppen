@@ -397,17 +397,18 @@ export const KOPPEN_RULES = {
 
     // Calculate Pthreshold for B climates (Köppen-Geiger formula)
     // Pthreshold in mm, MAT in °C
+    // Per Köppen: +280mm if 70%+ precip in winter, +140mm if 70%+ in summer
     let Pthreshold;
     if (Psummer / MAP >= 0.7) {
-      Pthreshold = 20 * MAT + 280;  // Summer rainfall dominant
+      Pthreshold = 20 * MAT + 140;  // Summer rainfall dominant (70%+ in summer)
     } else if (Psummer / MAP <= 0.3) {
-      Pthreshold = 20 * MAT;         // Winter rainfall dominant
+      Pthreshold = 20 * MAT + 280;  // Winter rainfall dominant (70%+ in winter)
     } else {
-      Pthreshold = 20 * MAT + 140;   // Evenly distributed
+      Pthreshold = 20 * MAT + 140;  // Evenly distributed
     }
 
-    // Count warm months (T > 10°C)
-    const warmMonths = temp.filter(t => t > 10).length;
+    // Count warm months (T >= 10°C per Köppen definition)
+    const warmMonths = temp.filter(t => t >= 10).length;
 
     // Classification decision tree (per Beck et al. 2018)
     // Order: E (polar) → B (arid) → A (tropical) → C/D (temperate/continental)

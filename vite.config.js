@@ -4,7 +4,7 @@ export default defineConfig({
   base: '/koppen/',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false, // Disabled for production security (prevent source code exposure)
     rollupOptions: {
       output: {
         manualChunks: {
