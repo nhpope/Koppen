@@ -26,6 +26,12 @@ let map = null;
  * @returns {Promise<L.Map>} Leaflet map instance
  */
 async function init(containerId, options = {}) {
+  // Check if already initialized
+  if (map) {
+    console.warn('[Koppen] Map already initialized');
+    return map;
+  }
+
   const container = document.getElementById(containerId);
   if (!container) {
     throw new Error(`Map container '${containerId}' not found`);
