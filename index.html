@@ -11,6 +11,15 @@
   </head>
   <body>
     <a href="#map-container" class="skip-link">Skip to main content</a>
+
+    <!-- Loading overlay (shown while climate data loads) -->
+    <div class="loading-overlay" role="status" aria-live="polite">
+      <div>
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <p class="loading-text">Loading climate data...</p>
+      </div>
+    </div>
+
     <div id="app">
       <header class="header">
         <h1 class="header__title">Koppen</h1>
@@ -53,7 +62,9 @@
         </nav>
       </header>
       <main class="main">
-        <div id="map-container" class="map-container"></div>
+        <div id="map-container" class="map-container">
+          <div class="map-skeleton" aria-hidden="true"></div>
+        </div>
         <div id="legend-container" class="legend"></div>
         <div id="info-panel" class="info-panel"></div>
         <div id="builder-panel" class="builder-panel"></div>
