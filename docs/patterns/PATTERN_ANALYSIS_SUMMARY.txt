@@ -1,0 +1,240 @@
+================================================================================
+EPIC 4 PATTERN ANALYSIS - SUMMARY FOR STORY 5-1
+================================================================================
+
+Project: Köppen - Interactive Climate Classification Explorer
+Analysis Date: December 22, 2025
+Source Files Analyzed:
+  - src/builder/index.js (633 lines)
+  - src/builder/threshold-sliders.js (287 lines)
+  - src/main.js (269 lines)
+  - src/style.css (1723 lines)
+  - src/ui/index.js (95 lines)
+  - src/climate/index.js (77 lines)
+  - src/map/index.js (100+ lines)
+
+================================================================================
+KEY PATTERNS EXTRACTED
+================================================================================
+
+1. FILE STRUCTURE
+   Pattern: Module-based architecture
+   - Each feature gets: src/[feature]/index.js (public API)
+   - Sub-components: src/[feature]/component.js (internal logic)
+   - For Story 5-1: Create src/ui/comparison-mode.js
+
+2. EVENT SYSTEM
+   Namespace: koppen:*
+   - Control events: koppen:toggle-*, koppen:show-*, koppen:hide-*
+   - State events: koppen:*-changed, koppen:*-enabled, koppen:*-opened
+   - Coordination: koppen:close-panels with { except: 'panel-name' }
+   - Detail pattern: Always pass full state in event.detail
+
+3. CSS ARCHITECTURE
+   Token-based: CSS variables for colors, spacing, typography
+   BEM classes: .block__element--modifier structure
+   State management: .component--active, .component--visible
+   Transitions: Use --transition-fast (150ms ease)
+
+4. STATE MANAGEMENT
+   Module-level private variables
+   Pattern: Update state → Update DOM → Dispatch event
+   Cleanup: Track all listeners, remove in destroy()
+
+5. ACCESSIBILITY
+   ARIA attributes: aria-hidden, aria-pressed, aria-label
+   Live regions: aria-live="polite", role="status"
+   Focus management: Focus trap, focus restoration
+   Keyboard support: Escape key, shortcut keys (e.g., 'b' for builder)
+
+6. ERROR HANDLING
+   Try-catch blocks with user feedback
+   Safe DOM queries (null checks, optional chaining)
+   User-friendly error messages
+   Recovery actions provided
+
+7. TESTING APPROACH
+   Event dispatch → State verification → DOM checks → Event cascade
+   Mock data with presets
+   Error state handling
+
+================================================================================
+CONCRETE RULES FOR STORY 5-1
+================================================================================
+
+MODULE FILE: src/ui/comparison-mode.js
+  - Export default object with methods: init, toggle, enable, disable,
+    isEnabled, setClassifications, destroy
+  - Private module variables: isComparisonEnabled, selectedClassifications,
+    comparisonPanel, eventListeners
+  - Track event listeners for cleanup
+
+EVENT NAMING:
+  - koppen:toggle-comparison (control)
+  - koppen:comparison-enabled (state - with detail)
+  - koppen:comparison-disabled (state - with detail)
+  - Listen to: koppen:close-panels (with except check)
+
+CSS CLASSES:
+  - .comparison-toggle (button)
+  - .comparison-toggle--active (state variant)
+  - .comparison-panel (container)
+  - .comparison-panel--active (visibility)
+  - .comparison-panel__header, __content, __close, etc.
+  - .comparison-item, .comparison-item__color, __label
+
+STATE TRANSITIONS:
+  DISABLED → (toggle/enable) → ENABLED
+  ENABLED → (toggle/disable) → DISABLED
+  ENABLED → (close-panels except != comparison) → DISABLED
+
+LIFECYCLE:
+  init() → setupEventListeners() → ready
+  toggle() → state change → DOM update → event dispatch
+  destroy() → remove event listeners → cleanup
+
+================================================================================
+FILES TO CREATE/MODIFY
+================================================================================
+
+NEW FILES:
+  1. src/ui/comparison-mode.js (500-600 lines)
+     - Full module implementation with all functions
+
+MODIFIED FILES:
+  1. src/ui/index.js (4 lines)
+     - Import comparison-mode
+     - Call comparisonMode.init() in init()
+     - Call comparisonMode.destroy() in destroy()
+
+  2. src/style.css (60-80 lines at end)
+     - .comparison-toggle styles
+     - .comparison-panel styles
+     - .comparison-item styles
+     - Responsive media queries
+
+  3. src/main.js (optional, 2-5 lines)
+     - Add keyboard shortcut listener (e.g., 'c' key)
+     - Handle koppen:toggle-comparison event
+
+================================================================================
+PATTERN CHECKLIST - BEFORE MARKING DONE
+================================================================================
+
+Code Quality:
+  ☐ ESLint passes (npm run lint)
+  ☐ TypeScript passes (npx tsc --noEmit)
+  ☐ Build succeeds (npm run build)
+  ☐ Dev server runs (npm run dev)
+
+Functionality:
+  ☐ Toggle button appears in header
+  ☐ Toggle dispatches koppen:toggle-comparison event
+  ☐ koppen:comparison-enabled event fires when enabling
+  ☐ koppen:comparison-disabled event fires when disabling
+  ☐ Panel shows when enabled, hides when disabled
+  ☐ Close panels event closes comparison (except: 'comparison' check works)
+  ☐ Keyboard shortcut works (if implemented)
+
+CSS/Styling:
+  ☐ Uses design tokens (--color-*, --space-*, --transition-*)
+  ☐ BEM class naming consistent
+  ☐ State classes toggle properly
+  ☐ Transitions smooth (150ms)
+  ☐ Responsive design works on mobile
+  ☐ Hover/focus states visible
+
+Accessibility:
+  ☐ aria-hidden="true/false" set correctly
+  ☐ aria-pressed="true/false" on toggle button
+  ☐ aria-label attributes present
+  ☐ Keyboard accessible (tab, enter, escape)
+  ☐ Color not only indicator (ARIA attributes present)
+
+Event System:
+  ☐ koppen: namespace used for all events
+  ☐ Event listeners tracked for cleanup
+  ☐ destroy() removes all listeners
+  ☐ Event detail includes full state
+  ☐ Closes other panels correctly
+
+Browser Console:
+  ☐ No errors or warnings
+  ☐ [Koppen] initialization messages visible
+  ☐ Event dispatch logged (if debugging)
+
+================================================================================
+REFERENCE DOCUMENTS CREATED
+================================================================================
+
+1. EPIC_4_PATTERN_ANALYSIS.md
+   - Comprehensive 12-section analysis with detailed examples
+   - 600+ lines covering all aspects of Epic 4 implementation
+
+2. PATTERN_QUICK_REFERENCE.md
+   - 1-page quick lookup for common patterns
+   - Event naming, CSS structure, state management
+   - Copy-paste ready code templates
+
+3. PATTERN_CODE_EXAMPLES.md
+   - 8 concrete code examples ready to adapt
+   - Full module implementation
+   - CSS, testing, event flow diagrams
+
+4. PATTERN_ANALYSIS_SUMMARY.txt
+   - This file - executive summary
+
+================================================================================
+HOW TO USE THESE DOCUMENTS
+================================================================================
+
+Step 1: Read PATTERN_QUICK_REFERENCE.md (5 min)
+  → Understand overall pattern structure
+
+Step 2: Review PATTERN_CODE_EXAMPLES.md (10 min)
+  → See concrete implementations
+
+Step 3: Implement Story 5-1 (60-90 min)
+  → Use examples as templates
+  → Follow patterns exactly
+
+Step 4: Reference EPIC_4_PATTERN_ANALYSIS.md as needed
+  → Detailed explanations for each pattern
+  → When you need to understand "why" not just "what"
+
+Step 5: Run verification checklist
+  → Ensure all patterns were followed
+  → Test in browser and console
+
+================================================================================
+CRITICAL PATTERNS TO NOT FORGET
+================================================================================
+
+1. ALWAYS track event listeners for cleanup
+   → eventListeners.push({ event, handler })
+   → Remove in destroy()
+
+2. ALWAYS update aria attributes with state
+   → aria-hidden, aria-pressed synchronized with DOM classes
+
+3. ALWAYS use design tokens, NOT hardcoded colors
+   → Use --color-primary, not #2563eb
+
+4. ALWAYS dispatch events after state changes
+   → State → DOM → Event pattern
+
+5. ALWAYS check except: property in close-panels listener
+   → if (e.detail?.except !== 'comparison') { close(); }
+
+6. ALWAYS use BEM naming for CSS
+   → .block__element--modifier, never .block .element
+
+7. ALWAYS include ARIA labels on interactive elements
+   → aria-label, aria-pressed, aria-hidden
+
+8. ALWAYS clean up in destroy()
+   → Remove listeners, nullify variables
+
+================================================================================
+END OF SUMMARY
+================================================================================
