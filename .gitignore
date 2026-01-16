@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Large generated data files (use CDN for production)
+public/data/climate-1deg.geojson
+public/data/climate-1deg.geojson.gz
+public/data/tile-index.json
+public/data/tiles/

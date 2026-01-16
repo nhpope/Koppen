@@ -118,6 +118,7 @@ export default [
       }],
 
       // Error handling (per Architecture patterns)
+      // Use logger.log() from utils/logger.js instead of console.log in production code
       'no-console': ['warn', {
         allow: ['error', 'warn'],
       }],
