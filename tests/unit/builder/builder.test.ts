@@ -179,7 +179,7 @@ describe('Builder Module', () => {
       document.dispatchEvent(
         new CustomEvent('koppen:close-panels', {
           detail: { except: 'builder' },
-        })
+        }),
       );
 
       expect(builderModule.isOpen()).toBe(true);
@@ -229,7 +229,7 @@ describe('Builder Module', () => {
       builderModule.open();
 
       const focusable = builderPanel.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
 
       expect(focusable.length).toBeGreaterThan(0);
@@ -276,6 +276,160 @@ describe('Builder Module', () => {
       icons.forEach((icon) => {
         expect(icon.getAttribute('aria-hidden')).toBe('true');
       });
+    });
+  });
+
+  describe('Name Input', () => {
+    beforeEach(() => {
+      document.dispatchEvent(new CustomEvent('koppen:data-loaded'));
+    });
+
+    it('should have name input field', () => {
+      const nameInput = builderPanel.querySelector('#classification-name');
+      expect(nameInput).toBeDefined();
+      expect(nameInput?.getAttribute('placeholder')).toBe('My Classification');
+      expect(nameInput?.getAttribute('maxLength')).toBe('50');
+    });
+
+    it('should dispatch koppen:classification-named event on input', () => {
+      const nameInput = builderPanel.querySelector('#classification-name') as HTMLInputElement;
+      const listener = vi.fn();
+      document.addEventListener('koppen:classification-named', listener);
+
+      nameInput.value = 'Test Classification';
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      expect(listener).toHaveBeenCalled();
+      expect(listener.mock.calls[0][0].detail.name).toBe('Test Classification');
+
+      document.removeEventListener('koppen:classification-named', listener);
+    });
+  });
+
+  describe('Share Button', () => {
+    beforeEach(() => {
+      document.dispatchEvent(new CustomEvent('koppen:data-loaded'));
+    });
+
+    it('should have share button with correct attributes', () => {
+      const shareBtn = builderPanel.querySelector('.builder-panel__share-btn');
+      expect(shareBtn).toBeDefined();
+      expect(shareBtn?.getAttribute('data-share-classification')).toBe('');
+      expect(shareBtn?.getAttribute('aria-label')).toBe('Share classification via URL');
+    });
+  });
+
+  describe('Layer Ready Event', () => {
+    it('should render options when koppen:layer-ready event fires', () => {
+      // Initially should show loading
+      const loadingBefore = builderPanel.querySelector('.builder-panel__loading');
+      expect(loadingBefore).toBeDefined();
+
+      // Fire layer ready event (hybrid loading system)
+      document.dispatchEvent(new CustomEvent('koppen:layer-ready'));
+
+      // Should now show options
+      const options = builderPanel.querySelector('.builder-panel__options');
+      expect(options).toBeDefined();
+    });
+  });
+
+  describe('Fork Classification Event', () => {
+    beforeEach(() => {
+      document.dispatchEvent(new CustomEvent('koppen:data-loaded'));
+    });
+
+    it('should handle koppen:fork-requested event', () => {
+      builderModule.open();
+
+      const mockClassification = {
+        name: 'Forked Classification',
+        thresholds: {
+          temperature: { tropical_min: { value: 20 } },
+        },
+      };
+
+      document.dispatchEvent(new CustomEvent('koppen:fork-requested', {
+        detail: {
+          classification: mockClassification,
+          sourceURL: 'https://example.com/share/123',
+        },
+      }));
+
+      // Should open the builder if closed and start editing the forked classification
+      expect(builderModule.isOpen()).toBe(true);
+    });
+
+    it('should ignore fork event with no classification', () => {
+      document.dispatchEvent(new CustomEvent('koppen:fork-requested', {
+        detail: {},
+      }));
+
+      // Should not throw and not change state
+      expect(builderModule.isOpen()).toBe(false);
+    });
+
+    it('should handle fork event when builder is closed', () => {
+      const mockClassification = {
+        name: 'Forked',
+        thresholds: {
+          temperature: { tropical_min: { value: 20 } },
+        },
+      };
+
+      expect(builderModule.isOpen()).toBe(false);
+
+      document.dispatchEvent(new CustomEvent('koppen:fork-requested', {
+        detail: {
+          classification: mockClassification,
+        },
+      }));
+
+      // Should open the builder
+      expect(builderModule.isOpen()).toBe(true);
+    });
+  });
+
+  describe('Escape Key Handling', () => {
+    it('should not close when Escape pressed and builder is closed', () => {
+      expect(builderModule.isOpen()).toBe(false);
+
+      const escapeEvent = new KeyboardEvent('keydown', { key: 'Escape' });
+      document.dispatchEvent(escapeEvent);
+
+      expect(builderModule.isOpen()).toBe(false);
+    });
+
+    it('should not react to non-Escape keys', () => {
+      builderModule.open();
+
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter' });
+      document.dispatchEvent(enterEvent);
+
+      expect(builderModule.isOpen()).toBe(true);
+    });
+  });
+
+  describe('Close Panels Edge Cases', () => {
+    it('should handle close-panels event with null detail', () => {
+      builderModule.open();
+
+      document.dispatchEvent(new CustomEvent('koppen:close-panels', {
+        detail: null,
+      }));
+
+      expect(builderModule.isOpen()).toBe(false);
+    });
+
+    it('should handle close-panels event with other exception', () => {
+      builderModule.open();
+
+      document.dispatchEvent(new CustomEvent('koppen:close-panels', {
+        detail: { except: 'legend' },
+      }));
+
+      // Should close because exception is not 'builder'
+      expect(builderModule.isOpen()).toBe(false);
     });
   });
 
@@ -346,7 +500,7 @@ describe('Builder Module', () => {
       // Should show help message for scratch mode (Story 4.6)
       const helpMessage = builderPanel.querySelector('.builder-panel__help');
       expect(helpMessage).toBeTruthy();
-      expect(helpMessage?.textContent).toContain('Define thresholds');
+      expect(helpMessage?.textContent).toContain('Create categories and define rules');
     });
   });
 });
