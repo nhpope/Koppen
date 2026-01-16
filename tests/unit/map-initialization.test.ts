@@ -73,7 +73,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
         expect.objectContaining({
           center: [20, 0],
           zoom: 2,
-        })
+        }),
       );
     });
   });
@@ -88,7 +88,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
         container,
         expect.objectContaining({
           zoomControl: true,
-        })
+        }),
       );
     });
   });
@@ -115,7 +115,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
         container,
         expect.objectContaining({
           minZoom: 2,
-        })
+        }),
       );
     });
 
@@ -128,7 +128,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
         container,
         expect.objectContaining({
           maxZoom: 10,
-        })
+        }),
       );
     });
   });
@@ -141,7 +141,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
 
       expect(L.tileLayer).toHaveBeenCalledWith(
         expect.stringContaining('cartodb.com'),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -154,7 +154,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
         expect.any(String),
         expect.objectContaining({
           attribution: expect.any(String),
-        })
+        }),
       );
     });
   });
@@ -233,7 +233,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
       await MapModule.default.init('test-map-container');
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('already initialized')
+        expect.stringContaining('already initialized'),
       );
     });
   });
@@ -243,7 +243,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
       const MapModule = await import('../../src/map/index.js');
 
       await expect(
-        MapModule.default.init('non-existent-container')
+        MapModule.default.init('non-existent-container'),
       ).rejects.toThrow();
     });
 
@@ -251,7 +251,7 @@ describe.skip('Story 2.1: Base Map Initialization', () => {
       const MapModule = await import('../../src/map/index.js');
 
       await expect(
-        MapModule.default.init('non-existent-container')
+        MapModule.default.init('non-existent-container'),
       ).rejects.toThrow('not found');
     });
   });

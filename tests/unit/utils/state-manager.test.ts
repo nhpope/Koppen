@@ -81,7 +81,7 @@ describe('state-manager', () => {
     it('throws error for non-serializable data', () => {
       const withFunction = {
         ...sampleClassification,
-        // @ts-ignore - testing invalid input
+        // @ts-expect-error - testing invalid input
         callback: () => console.log('test'),
       };
 
@@ -319,6 +319,18 @@ describe('state-manager', () => {
       // undefined thresholds stringify to "undefined" which differs from valid thresholds
       // This should detect the difference and return true
       expect(isModified(invalid as any, original)).toBe(true);
+    });
+
+    it('returns false and logs warning when comparison fails with circular reference', () => {
+      const original = JSON.parse(JSON.stringify(sampleClassification));
+      const circular: any = deepClone(original);
+
+      // Create circular reference that will cause JSON.stringify to fail
+      circular.thresholds.self = circular.thresholds;
+
+      // Should return false when stringify fails
+      const result = isModified(circular, original);
+      expect(result).toBe(false);
     });
   });
 

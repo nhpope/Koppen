@@ -47,7 +47,7 @@ describe('Comparison Module (Story 5.1)', () => {
       comparison.init({});
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        'Comparison module requires Köppen classification data'
+        'Comparison module requires Köppen classification data',
       );
     });
   });
@@ -177,7 +177,7 @@ describe('Comparison Module (Story 5.1)', () => {
       // Count active tabs
       const countActiveTabs = () => {
         return Array.from(tabs).filter(tab =>
-          tab.classList.contains('builder-panel__comparison-tab--active')
+          tab.classList.contains('builder-panel__comparison-tab--active'),
         ).length;
       };
 
@@ -274,7 +274,7 @@ describe('Comparison Module (Story 5.1)', () => {
       expect(measureSpy).toHaveBeenCalledWith(
         'comparison-switch-duration',
         'comparison-switch-start',
-        'comparison-switch-end'
+        'comparison-switch-end',
       );
     });
   });

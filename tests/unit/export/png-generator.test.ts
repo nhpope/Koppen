@@ -179,8 +179,8 @@ describe('PNG Generator', () => {
   });
 
   describe('Export State', () => {
-    it('should return false for isExporting when not exporting', () => {
-      const pngGenerator = require('../../../src/export/png-generator.js').default;
+    it('should return false for isExporting when not exporting', async () => {
+      const pngGenerator = (await import('../../../src/export/png-generator.js')).default;
       expect(pngGenerator.isExporting()).toBe(false);
     });
 
@@ -209,7 +209,7 @@ describe('PNG Generator', () => {
       // Verify html2canvas was called with scale option
       expect(html2canvas).toHaveBeenCalledWith(
         expect.any(Object),
-        expect.objectContaining({ scale: 2 })
+        expect.objectContaining({ scale: 2 }),
       );
     });
 
@@ -223,7 +223,7 @@ describe('PNG Generator', () => {
 
       expect(html2canvas).toHaveBeenCalledWith(
         expect.any(Object),
-        expect.objectContaining({ scale: 2 })
+        expect.objectContaining({ scale: 2 }),
       );
     });
 
@@ -236,7 +236,7 @@ describe('PNG Generator', () => {
       expect(mockCanvasInstance.toBlob).toHaveBeenCalledWith(
         expect.any(Function),
         'image/png',
-        0.8
+        0.8,
       );
     });
   });

@@ -36,7 +36,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should calculate differences between classifications', () => {
       const { differences, summary } = differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       expect(differences.length).toBe(2); // 2 cells changed
@@ -48,7 +48,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should identify correct from/to climate types', () => {
       const { differences } = differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       expect(differences[0].from).toBe('Cfa');
@@ -72,7 +72,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
 
       differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       expect(eventSpy).toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should calculate top reclassification patterns', () => {
       const { summary } = differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       expect(summary.topPatterns.length).toBeGreaterThan(0);
@@ -149,7 +149,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should include climate names in top patterns', () => {
       const { summary } = differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       const pattern = summary.topPatterns.find(p => p.from === 'Cfa');
@@ -181,7 +181,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
       // Calculate differences first
       differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       const eventSpy = vi.fn();
@@ -208,7 +208,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should show summary when differences exist', () => {
       differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       const ui = differenceHighlighter.createToggleUI();
@@ -222,7 +222,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should show top patterns in UI', () => {
       differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
 
       const ui = differenceHighlighter.createToggleUI();
@@ -256,7 +256,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should return current state', () => {
       differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
       differenceHighlighter.toggle(true);
 
@@ -270,7 +270,7 @@ describe('Difference Highlighter Module (Story 5.2)', () => {
     it('should reset state on destroy', () => {
       differenceHighlighter.calculateDifferences(
         mockCustomClassification,
-        mockKoppenClassification
+        mockKoppenClassification,
       );
       differenceHighlighter.toggle(true);
 

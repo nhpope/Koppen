@@ -182,7 +182,7 @@ const thresholdSliders = {
     document.dispatchEvent(
       new CustomEvent('koppen:threshold-reset', {
         detail: { key, category, value: originalValue },
-      })
+      }),
     );
   },
 
@@ -218,7 +218,7 @@ const thresholdSliders = {
     document.dispatchEvent(
       new CustomEvent('koppen:modification-summary-changed', {
         detail: summary,
-      })
+      }),
     );
   },
 

@@ -17,12 +17,13 @@ test.describe('Share URL Generation', () => {
     await page.click('#create-btn');
     await page.waitForSelector('#builder-panel[aria-hidden="false"]', { timeout: 5000 });
 
-    // Wait for data to load
-    await page.waitForTimeout(1000);
+    // Wait for start options to load
+    await page.waitForSelector('#start-from-koppen', { timeout: 5000 });
 
     // Start from Köppen preset
     await page.click('#start-from-koppen');
-    await page.waitForTimeout(1000);
+    // Wait for threshold sliders to appear
+    await page.waitForSelector('.threshold-slider', { timeout: 5000 });
   });
 
   test('should display share button in builder panel', async ({ page }) => {
@@ -150,9 +151,8 @@ test.describe('Share URL Generation', () => {
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
     expect(clipboardText).toBe(expectedURL);
 
-    // Wait for success state to reset (2 seconds)
-    await page.waitForTimeout(2500);
-    await expect(copyBtn).toHaveText('📋 Copy');
+    // Wait for success state to reset (button text changes back)
+    await expect(copyBtn).toHaveText('📋 Copy', { timeout: 3000 });
     await expect(copyBtn).not.toHaveClass(/share-modal__copy-btn--success/);
   });
 
@@ -191,7 +191,7 @@ test.describe('Share URL Generation', () => {
     if (await slider.isVisible()) {
       const sliderInput = slider.locator('input[type="range"]');
       await sliderInput.fill('25');  // Change value
-      await page.waitForTimeout(500);  // Wait for debounce
+      // Slider change is synchronous, no need to wait
     }
 
     // Get URL with modified threshold

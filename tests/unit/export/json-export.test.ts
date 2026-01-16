@@ -278,7 +278,7 @@ describe('JSON Export/Import', () => {
       expect(classification.name).toBe('Newer Minor');
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         '[Koppen] JSON from newer minor version:',
-        '1.5'
+        '1.5',
       );
 
       consoleWarnSpy.mockRestore();
@@ -301,7 +301,7 @@ describe('JSON Export/Import', () => {
       expect(classification.name).toBe('Older');
       expect(consoleLogSpy).toHaveBeenCalledWith(
         '[Koppen] JSON from older version, will attempt migration:',
-        '0.9'
+        '0.9',
       );
 
       consoleLogSpy.mockRestore();
@@ -327,7 +327,7 @@ describe('JSON Export/Import', () => {
         '[Koppen] Invalid threshold format:',
         'temperature',
         'tropical_min',
-        'not a number'
+        'not a number',
       );
 
       consoleWarnSpy.mockRestore();

@@ -148,6 +148,7 @@ describe('URL Encoder', () => {
     });
 
     it('should throw error for corrupted gzip data', () => {
+      // eslint-disable-next-line no-secrets/no-secrets -- Test URL, not a real secret
       const invalidURL = 'https://koppen.app/?s=eJwLycgsVgIABEUBkQ==';  // Valid base64, invalid gzip
 
       expect(() => decodeURL(invalidURL)).toThrow(/Invalid share URL/);
@@ -166,7 +167,7 @@ describe('URL Encoder', () => {
 
       // Köppen defaults for unmodified (should be -3°C standard)
       expect(decoded?.thresholds.temperature.temperate_cold_min.value).toBe(
-        KOPPEN_PRESET.thresholds.temperature.temperate_cold_min.value
+        KOPPEN_PRESET.thresholds.temperature.temperate_cold_min.value,
       );
     });
 
@@ -189,6 +190,58 @@ describe('URL Encoder', () => {
 
       expect(decoded).toBeTruthy();
       expect(decoded?.name).toBe('My Custom Climate');
+    });
+
+    it('should throw error for unsupported schema version', () => {
+      // Create a manually crafted URL with wrong schema version
+      const pako = require('pako');
+      const wrongVersionState = { v: 999, n: 'Test', t: {} };
+      const json = JSON.stringify(wrongVersionState);
+      const compressed = pako.gzip(json);
+      const base64 = btoa(String.fromCharCode.apply(null, compressed));
+      const badURL = `https://koppen.app/?s=${encodeURIComponent(base64)}`;
+
+      expect(() => decodeURL(badURL)).toThrow(/Unsupported schema version/);
+    });
+
+    it('should handle new category not in Köppen preset', () => {
+      // Create state with a custom category
+      const stateWithNewCategory = {
+        name: 'Custom',
+        thresholds: {
+          temperature: {
+            tropical_min: { value: 20 },
+          },
+          customCategory: {
+            customThreshold: { value: 42 },
+          },
+        },
+      };
+
+      const url = generateURL(stateWithNewCategory);
+      const decoded = decodeURL(url);
+
+      // Custom category should be preserved
+      expect(decoded?.thresholds.customCategory?.customThreshold?.value).toBe(42);
+    });
+
+    it('should handle new threshold not in Köppen preset', () => {
+      // Create state with a new threshold in existing category
+      const stateWithNewThreshold = {
+        name: 'Custom',
+        thresholds: {
+          temperature: {
+            tropical_min: { value: 20 },
+            brandNewThreshold: { value: 99 },
+          },
+        },
+      };
+
+      const url = generateURL(stateWithNewThreshold);
+      const decoded = decodeURL(url);
+
+      // New threshold should be preserved with minimal config
+      expect(decoded?.thresholds.temperature.brandNewThreshold?.value).toBe(99);
     });
   });
 
@@ -256,10 +309,10 @@ describe('URL Encoder', () => {
 
       expect(decoded?.name).toBe(sampleState.name);
       expect(decoded?.thresholds.temperature.tropical_min.value).toBe(
-        sampleState.thresholds.temperature.tropical_min.value
+        sampleState.thresholds.temperature.tropical_min.value,
       );
       expect(decoded?.thresholds.temperature.hot_summer.value).toBe(
-        sampleState.thresholds.temperature.hot_summer.value
+        sampleState.thresholds.temperature.hot_summer.value,
       );
     });
 

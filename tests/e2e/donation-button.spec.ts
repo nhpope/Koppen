@@ -65,7 +65,7 @@ test.describe('Donation Button - Desktop', () => {
       return {
         outline: styles.outline,
         outlineWidth: styles.outlineWidth,
-        outlineStyle: styles.outlineStyle
+        outlineStyle: styles.outlineStyle,
       };
     });
 
@@ -83,7 +83,7 @@ test.describe('Donation Button - Desktop', () => {
       const computed = window.getComputedStyle(el);
       return {
         color: computed.color,
-        backgroundColor: computed.backgroundColor
+        backgroundColor: computed.backgroundColor,
       };
     });
 
@@ -113,7 +113,7 @@ test.describe('Donation Button - Mobile', () => {
       return {
         position: computed.position,
         width: computed.width,
-        height: computed.height
+        height: computed.height,
       };
     });
 
@@ -161,7 +161,7 @@ test.describe('Donation Button - Click Behavior', () => {
           const customEvent = e as CustomEvent;
           resolve({
             type: customEvent.type,
-            detail: customEvent.detail
+            detail: customEvent.detail,
           });
         }, { once: true });
 
@@ -176,8 +176,8 @@ test.describe('Donation Button - Click Behavior', () => {
       type: 'koppen:donation-clicked',
       detail: {
         source: 'header',
-        timestamp: expect.any(Number)
-      }
+        timestamp: expect.any(Number),
+      },
     });
   });
 
