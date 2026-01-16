@@ -3,6 +3,17 @@
  * @module builder/threshold-sliders
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses threshold data using keys from internal preset configuration.
+ * Keys are not user-controlled; they come from KOPPEN_PRESET or Object.keys() iteration.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
+/* eslint-disable sonarjs/no-duplicate-string --
+ * CSS class names and UI labels are intentionally repeated for code clarity.
+ * BEM naming convention results in repeated class name prefixes.
+ */
+
 let thresholds = {};
 let originalPreset = null; // Story 5.3: Store original for comparison
 let updateCallbacks = [];
@@ -54,7 +65,7 @@ function handleThresholdChange(key, value, category, config) {
         unit: config.unit,
         thresholds: allValues,
       },
-    })
+    }),
   );
 
   // Execute callbacks
@@ -178,7 +189,7 @@ function resetThreshold(key, category) {
   document.dispatchEvent(
     new CustomEvent('koppen:threshold-reset', {
       detail: { key, category, value: originalValue },
-    })
+    }),
   );
 }
 
@@ -223,7 +234,7 @@ const updateModificationSummary = debounce(() => {
   document.dispatchEvent(
     new CustomEvent('koppen:modification-summary-changed', {
       detail: summary,
-    })
+    }),
   );
 }, 100);
 
@@ -409,7 +420,7 @@ export default {
     if (preset.thresholds.temperature) {
       const tempGroup = createSliderGroup(
         'temperature',
-        preset.thresholds.temperature
+        preset.thresholds.temperature,
       );
       container.appendChild(tempGroup);
     }
@@ -418,7 +429,7 @@ export default {
     if (preset.thresholds.precipitation) {
       const precipGroup = createSliderGroup(
         'precipitation',
-        preset.thresholds.precipitation
+        preset.thresholds.precipitation,
       );
       container.appendChild(precipGroup);
     }
@@ -448,7 +459,7 @@ export default {
         rangeInput.setAttribute('aria-valuenow', config.value);
         rangeInput.setAttribute(
           'aria-valuetext',
-          `${config.value} ${config.unit}`
+          `${config.value} ${config.unit}`,
         );
       }
     });
@@ -457,7 +468,7 @@ export default {
     document.dispatchEvent(
       new CustomEvent('koppen:thresholds-reset', {
         detail: { thresholds: getAllValues() },
-      })
+      }),
     );
   },
 
@@ -509,7 +520,7 @@ export default {
         rangeInput.setAttribute('aria-valuenow', config.value);
         rangeInput.setAttribute(
           'aria-valuetext',
-          `${config.value} ${config.unit || ''}`
+          `${config.value} ${config.unit || ''}`,
         );
 
         // Update modification indicator (Story 5.3)
@@ -519,7 +530,7 @@ export default {
           key,
           category,
           config.value,
-          config.unit || ''
+          config.unit || '',
         );
       }
     });
@@ -529,14 +540,14 @@ export default {
     document.dispatchEvent(
       new CustomEvent('koppen:thresholds-imported', {
         detail: { thresholds: allValues },
-      })
+      }),
     );
 
     // Re-render map with new values
     document.dispatchEvent(
       new CustomEvent('koppen:threshold-changed', {
         detail: { thresholds: allValues },
-      })
+      }),
     );
   },
 

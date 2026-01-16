@@ -4,7 +4,14 @@
  * @module export/json-export
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses threshold data using keys from internal preset configuration.
+ * Keys are not user-controlled; they come from KOPPEN_PRESET or Object.keys() iteration.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import { KOPPEN_PRESET } from '../climate/presets.js';
+import logger from '../utils/logger.js';
 
 const SCHEMA_VERSION = '1.0';
 const APP_VERSION = '0.1.0';
@@ -139,7 +146,7 @@ function checkVersionCompatibility(version) {
 
   // Older versions = compatible (backward compatibility)
   if (major < currentMajor) {
-    console.log('[Koppen] JSON from older version, will attempt migration:', version);
+    logger.log('[Koppen] JSON from older version, will attempt migration:', version);
     // Migration handled by caller if needed
   }
 

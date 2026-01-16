@@ -4,13 +4,15 @@
  * @module ui/header
  */
 
+import logger from '../utils/logger.js';
+
 export default {
   /**
    * Initialize header components
    */
   init() {
     this.initDonationButton();
-    console.log('[Koppen] Header module initialized');
+    logger.log('[Koppen] Header module initialized');
   },
 
   /**
@@ -31,13 +33,13 @@ export default {
       document.dispatchEvent(new CustomEvent('koppen:donation-clicked', {
         detail: {
           timestamp: Date.now(),
-          source: 'header'
+          source: 'header',
           // NO personal data: no userId, no IP, no userAgent, no fingerprinting
-        }
+        },
       }));
 
       // Log to console (for debugging)
-      console.log('[Koppen] Donation button clicked');
+      logger.log('[Koppen] Donation button clicked');
 
       // Track aggregate click count (privacy-respecting)
       this.trackDonationClick();
@@ -46,7 +48,7 @@ export default {
       // No need to prevent default or handle programmatically
     });
 
-    console.log('[Koppen] Donation button initialized');
+    logger.log('[Koppen] Donation button initialized');
   },
 
   /**
@@ -66,7 +68,7 @@ export default {
     if (window.KOPPEN_ANALYTICS_ENABLED) {
       window.trackEvent?.('donation', 'click', {
         source: 'header',
-        aggregate: true // No user identification
+        aggregate: true, // No user identification
       });
     }
   },
@@ -77,6 +79,6 @@ export default {
   destroy() {
     // Remove event listeners if needed
     // Currently using native link, so no cleanup required
-    console.log('[Koppen] Header module destroyed');
-  }
+    logger.log('[Koppen] Header module destroyed');
+  },
 };

@@ -3,8 +3,15 @@
  * Interactive legend showing all 30 Köppen climate types
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses CLIMATE_TYPES using hardcoded Köppen classification keys.
+ * Keys are not user-controlled; they come from the standard Köppen system.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import { CLIMATE_TYPES } from '../climate/koppen-rules.js';
 import { CLIMATE_COLORS } from '../utils/colors.js';
+import logger from '../utils/logger.js';
 
 let legendElement = null;
 let selectedType = null;
@@ -34,7 +41,7 @@ export function createLegend(container) {
   render();
   setupEventListeners();
 
-  console.log('[Koppen] Legend created');
+  logger.log('[Koppen] Legend created');
 }
 
 /**
@@ -81,7 +88,8 @@ function renderItem(type) {
             data-type="${type}"
             tabindex="0"
             role="option"
-            aria-selected="${isActive}">
+            aria-selected="${isActive}"
+            title="${isActive ? 'Click to show all' : 'Click to filter map'}">
       <span class="legend__color" style="background-color: ${color}"></span>
       <span class="legend__label">
         <span class="legend__code">${type}</span>
@@ -255,7 +263,7 @@ export function selectType(type, fromExternal = false) {
     }));
   }
 
-  console.log(`[Koppen] Legend: ${type} selected`);
+  logger.log(`[Koppen] Legend: ${type} selected`);
 }
 
 /**
@@ -281,7 +289,7 @@ export function deselectType() {
     detail: { type: previousType },
   }));
 
-  console.log('[Koppen] Legend: deselected');
+  logger.log('[Koppen] Legend: deselected');
 }
 
 /**

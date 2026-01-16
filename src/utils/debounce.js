@@ -40,7 +40,7 @@ export function debounce(func, wait = 300) {
  * @returns {Function} Throttled function
  *
  * @example
- * const throttledLog = throttle(() => console.log('scroll'), 300);
+ * const throttledLog = throttle(() => logger.log('scroll'), 300);
  * window.addEventListener('scroll', throttledLog); // Fires max once per 300ms
  */
 export function throttle(func, limit = 300) {

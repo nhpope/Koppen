@@ -7,6 +7,7 @@
 
 import { decodeURL, hasSharedState, generateURL } from '../export/url-encoder.js';
 import { debounce } from './debounce.js';
+import logger from './logger.js';
 
 /**
  * Encode classification state to URL-safe string (DEPRECATED)
@@ -50,7 +51,7 @@ export function getStateFromURL() {
     if (hasSharedState()) {
       const state = decodeURL();
       if (state) {
-        console.log(`[Koppen] Loaded shared classification: "${state.name}"`);
+        logger.log(`[Koppen] Loaded shared classification: "${state.name}"`);
         return state;
       }
     }
@@ -152,8 +153,8 @@ let currentState = { ...DEFAULT_STATE };
 /** Flag to prevent update loops during state restoration */
 let isRestoring = false;
 
-/** Debounced URL update function (for continuous events like map pan) */
-let debouncedURLUpdate = null;
+/** Reserved: Debounced URL update function (for continuous events like map pan) */
+const _DEBOUNCED_URL_UPDATE = null;
 
 /**
  * Initialize state synchronization (Story 6.7)
@@ -169,7 +170,7 @@ export function initStateSync() {
   // Listen for browser navigation (back/forward)
   listenForNavigation();
 
-  console.log('[Koppen] URL state synchronization initialized');
+  logger.log('[Koppen] URL state synchronization initialized');
 }
 
 /**
@@ -207,7 +208,7 @@ function listenForStateChanges() {
     updateURLState({ classification: e.detail.classification }, { immediate: true });
   });
 
-  console.log('[Koppen] State change listeners registered');
+  logger.log('[Koppen] State change listeners registered');
 }
 
 /**
@@ -234,7 +235,7 @@ function updateURLState(newState, options = {}) {
     window.history.replaceState(currentState, '', url);
   }
 
-  console.log('[Koppen] URL updated:', url);
+  logger.log('[Koppen] URL updated:', url);
 }
 
 /**
@@ -327,7 +328,7 @@ function restoreStateFromURL() {
       detail: { state },
     }));
 
-    console.log('[Koppen] State restored from URL');
+    logger.log('[Koppen] State restored from URL');
 
   } catch (error) {
     console.error('[Koppen] Failed to restore state from URL:', error);
@@ -430,7 +431,7 @@ function applyState(state) {
  */
 function listenForNavigation() {
   window.addEventListener('popstate', (event) => {
-    console.log('[Koppen] Browser navigation detected');
+    logger.log('[Koppen] Browser navigation detected');
 
     if (event.state) {
       // State stored by pushState
@@ -442,7 +443,7 @@ function listenForNavigation() {
     }
   });
 
-  console.log('[Koppen] Navigation listener registered');
+  logger.log('[Koppen] Navigation listener registered');
 }
 
 /**

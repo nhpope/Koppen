@@ -3,6 +3,12 @@
  * Based on Beck et al. color conventions
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file provides color lookup using Köppen climate type codes (Af, Am, Aw, etc.).
+ * Keys are not user-controlled; they are standard Köppen classification identifiers.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 export const CLIMATE_COLORS = {
   // Tropical (A) - Blues
   Af: '#0000FF',   // Tropical Rainforest

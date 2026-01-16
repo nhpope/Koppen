@@ -7,8 +7,10 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { CONSTANTS } from '../utils/constants.js';
 import { loadClimateData } from '../utils/data-loader.js';
+import logger from '../utils/logger.js';
 import {
   createClimateLayer,
+  createHybridClimateLayer,
   removeClimateLayer,
   filterByType,
   clearFilter,
@@ -72,16 +74,22 @@ async function init(containerId, options = {}) {
     detail: { map },
   }));
 
-  console.log('[Koppen] Map initialized');
+  logger.log('[Koppen] Map initialized');
 
-  // Load climate data
+  // Load climate data using hybrid approach (base layer + detail tiles)
   try {
-    const geojson = await loadClimateData();
-    if (geojson && geojson.features) {
-      createClimateLayer(geojson, map);
-    }
+    await createHybridClimateLayer(map);
   } catch (error) {
     console.error('[Koppen] Failed to load climate data:', error);
+    // Fallback to legacy approach if hybrid fails
+    try {
+      const geojson = await loadClimateData();
+      if (geojson && geojson.features) {
+        createClimateLayer(geojson, map);
+      }
+    } catch (fallbackError) {
+      console.error('[Koppen] Fallback load also failed:', fallbackError);
+    }
   }
 
   return map;
@@ -209,7 +217,7 @@ function destroy() {
     removeClimateLayer();
     map.remove();
     map = null;
-    console.log('[Koppen] Map destroyed');
+    logger.log('[Koppen] Map destroyed');
   }
 }
 

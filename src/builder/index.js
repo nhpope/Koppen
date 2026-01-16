@@ -3,22 +3,36 @@
  * @module builder
  */
 
+/* eslint-disable sonarjs/no-duplicate-string --
+ * CSS class names and UI element identifiers are intentionally repeated for code clarity.
+ */
+
 import presetLoader from './preset-loader.js';
 import thresholdSliders from './threshold-sliders.js';
 import comparison from './comparison.js';
 import shareModal from '../ui/share-modal.js';  // Story 6.3
 import exportModule from '../export/index.js';  // Story 6.5
 import stateManager from '../utils/state-manager.js';  // Story 6.6
+import { CustomRulesEngine } from '../climate/custom-rules.js';  // Custom rules
+import CategoryManager from './category-manager.js';  // Custom rules UI
+import logger from '../utils/logger.js';
+import { getFeatures as getClimateFeatures } from '../map/climate-layer.js';  // Static import to avoid dynamic import warning
 
 let builderPanel = null;
 let isOpen = false;
 let dataLoaded = false;
 let eventListeners = []; // Track event listeners for cleanup
 
+// Classification mode: 'koppen' (threshold-based) or 'custom' (rule-based)
+// eslint-disable-next-line no-unused-vars -- State tracking for future mode-dependent features
+let classificationMode = 'koppen';
+let customRulesEngine = null;
+let categoryManager = null;
+
 // Fork state management (Story 6.6)
 let currentClassification = null;
 let originalClassification = null; // Store original for comparison
-let isForkMode = false;
+let _IS_FORK_MODE = false; // Reserved for future fork mode tracking
 
 /**
  * Setup event listeners
@@ -36,13 +50,17 @@ function setupEventListeners() {
   document.addEventListener('koppen:close-panels', closePanelsHandler);
   eventListeners.push({ event: 'koppen:close-panels', handler: closePanelsHandler });
 
-  // Data loaded event
+  // Data loaded event (listen for both legacy and hybrid events)
   const dataLoadedHandler = () => {
     dataLoaded = true;
     render();
   };
   document.addEventListener('koppen:data-loaded', dataLoadedHandler);
   eventListeners.push({ event: 'koppen:data-loaded', handler: dataLoadedHandler });
+
+  // Hybrid layer ready event (new hybrid loading system)
+  document.addEventListener('koppen:layer-ready', dataLoadedHandler);
+  eventListeners.push({ event: 'koppen:layer-ready', handler: dataLoadedHandler });
 
   // Keyboard: Escape closes builder
   const keydownHandler = (e) => {
@@ -388,7 +406,8 @@ async function startFromKoppen() {
 }
 
 /**
- * Start from scratch (Story 4.6)
+ * Start from scratch with custom rules (Story 4.6 - Enhanced)
+ * Uses the new rule-based classification system
  */
 function startFromScratch() {
   try {
@@ -398,69 +417,306 @@ function startFromScratch() {
       return;
     }
 
-    // Import scratch preset
-    import('../climate/presets.js').then(({ SCRATCH_PRESET, KOPPEN_PRESET }) => {
-      // Guard against null builderPanel (module destroyed during async operation)
-      if (!builderPanel) {
-        console.warn('[Koppen] Builder panel was destroyed during preset load');
-        return;
+    // Set mode to custom rules
+    classificationMode = 'custom';
+
+    // Initialize empty custom rules engine
+    customRulesEngine = new CustomRulesEngine([]);
+
+    // Clear content and render custom rules mode
+    const content = builderPanel.querySelector('.builder-panel__content');
+    if (content) {
+      while (content.firstChild) {
+        content.removeChild(content.firstChild);
       }
 
-      // Initialize threshold sliders
-      thresholdSliders.init(SCRATCH_PRESET);
+      // Show help message for custom rules mode
+      const helpMessage = createCustomRulesHelpMessage();
+      content.appendChild(helpMessage);
 
-      // Initialize comparison module with Koppen as baseline
-      comparison.init({
-        koppenClassification: KOPPEN_PRESET.classification || KOPPEN_PRESET,
-      });
+      // Create category manager container
+      const categoryContainer = document.createElement('div');
+      categoryContainer.id = 'category-manager-container';
+      categoryContainer.className = 'builder-panel__category-manager';
+      content.appendChild(categoryContainer);
 
-      // Clear content and render scratch mode
-      const content = builderPanel.querySelector('.builder-panel__content');
-      if (content) {
-        while (content.firstChild) {
-          content.removeChild(content.firstChild);
-        }
+      // Initialize category manager
+      categoryManager = new CategoryManager(
+        categoryContainer,
+        customRulesEngine,
+        handleCustomRulesUpdate,
+      );
 
-        // Show help message
-        const helpMessage = createHelpMessage();
-        content.appendChild(helpMessage);
+      // Add export/import section for custom rules
+      const exportSection = createCustomRulesExportSection();
+      content.appendChild(exportSection);
 
-        // Add comparison tabs (Story 5.1)
-        const comparisonTabs = comparison.createUI();
-        content.appendChild(comparisonTabs);
+      // Show switch to Köppen button
+      const switchSection = createSwitchToKoppenSection();
+      content.appendChild(switchSection);
+    }
 
-        // Render threshold sliders
-        const sliders = thresholdSliders.render(SCRATCH_PRESET);
-        content.appendChild(sliders);
+    // Dispatch mode changed event
+    document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+      detail: { mode: 'custom' },
+    }));
 
-        // Add export/import section (Story 6.5)
-        const exportSection = createExportSection();
-        content.appendChild(exportSection);
+    // Dispatch scratch mode event
+    document.dispatchEvent(new CustomEvent('koppen:scratch-mode-started'));
 
-        // Show reset to Köppen button
-        const resetSection = createResetSection();
-        content.appendChild(resetSection);
-      }
+    // Trigger initial classification (all unclassified)
+    handleCustomRulesUpdate();
 
-      // Dispatch event
-      document.dispatchEvent(new CustomEvent('koppen:scratch-mode-started'));
-    });
   } catch (error) {
+    console.error('[Koppen] Failed to start scratch mode:', error);
     // Show error with fallback option
     renderError({
       message: 'Failed to start scratch mode',
       error: error.message,
       actions: [
-        { label: 'Start from Köppen', handler: () => startFromKoppen() },
+        { label: 'Start from Koppen', handler: () => startFromKoppen() },
       ],
     });
   }
 }
 
 /**
- * Create help message for scratch mode (Story 4.6)
+ * Create help message for custom rules mode
  * @returns {HTMLElement} Help message element
  */
+function createCustomRulesHelpMessage() {
+  const help = document.createElement('div');
+  help.className = 'builder-panel__help builder-panel__help--custom';
+  help.setAttribute('role', 'status');
+  help.setAttribute('aria-live', 'polite');
+
+  const icon = document.createElement('span');
+  icon.className = 'builder-panel__help-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '\u2728'; // Sparkles
+
+  const text = document.createElement('div');
+  text.className = 'builder-panel__help-text';
+  text.innerHTML = `
+    <strong>Custom Rules Mode</strong><br>
+    Create categories and define rules to classify regions. Features only appear classified when they match your rules.
+  `;
+
+  help.appendChild(icon);
+  help.appendChild(text);
+
+  return help;
+}
+
+/**
+ * Handle updates from custom rules engine
+ * Triggers reclassification and updates the map
+ */
+function handleCustomRulesUpdate() {
+  if (!customRulesEngine) return;
+
+  // Dispatch event to trigger reclassification with custom rules
+  document.dispatchEvent(new CustomEvent('koppen:custom-rules-changed', {
+    detail: {
+      engine: customRulesEngine,
+      categories: customRulesEngine.getSortedCategories(),
+    },
+  }));
+}
+
+/**
+ * Create export section for custom rules
+ * @returns {HTMLElement} Export section element
+ */
+function createCustomRulesExportSection() {
+  const section = document.createElement('div');
+  section.className = 'builder-panel__export-section';
+
+  const heading = document.createElement('h3');
+  heading.className = 'builder-panel__export-heading';
+  heading.textContent = 'Export & Import';
+
+  // Export JSON button
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'builder-panel__export-json-btn';
+  exportBtn.setAttribute('aria-label', 'Export custom rules as JSON file');
+
+  const exportIcon = document.createElement('span');
+  exportIcon.setAttribute('aria-hidden', 'true');
+  exportIcon.textContent = '\uD83D\uDCE5'; // Inbox tray
+  exportBtn.appendChild(exportIcon);
+  exportBtn.appendChild(document.createTextNode(' Export Rules'));
+
+  exportBtn.addEventListener('click', () => {
+    try {
+      if (!customRulesEngine) return;
+
+      const nameInput = document.getElementById('classification-name');
+      const name = nameInput?.value || 'My Custom Classification';
+
+      const jsonString = customRulesEngine.exportJSON(name);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name.replace(/[^a-z0-9]/gi, '_')}.json`;
+      a.click();
+
+      URL.revokeObjectURL(url);
+
+      // Show success feedback
+      exportBtn.textContent = '\u2713 Exported!';
+      setTimeout(() => {
+        exportBtn.innerHTML = '';
+        const icon = document.createElement('span');
+        icon.textContent = '\uD83D\uDCE5';
+        exportBtn.appendChild(icon);
+        exportBtn.appendChild(document.createTextNode(' Export Rules'));
+      }, 2000);
+
+    } catch (error) {
+      console.error('[Koppen] Export failed:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  });
+
+  // Import JSON button
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'builder-panel__import-json-btn';
+  importBtn.setAttribute('aria-label', 'Import custom rules from JSON file');
+
+  const importIcon = document.createElement('span');
+  importIcon.setAttribute('aria-hidden', 'true');
+  importIcon.textContent = '\uD83D\uDCE4'; // Outbox tray
+  importBtn.appendChild(importIcon);
+  importBtn.appendChild(document.createTextNode(' Import Rules'));
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+  fileInput.style.display = 'none';
+
+  importBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      importBtn.disabled = true;
+      importBtn.textContent = 'Importing...';
+
+      const text = await file.text();
+      const imported = CustomRulesEngine.importJSON(text);
+
+      // Replace current engine
+      customRulesEngine = imported;
+
+      // Re-render category manager
+      const container = document.getElementById('category-manager-container');
+      if (container && categoryManager) {
+        categoryManager.destroy();
+        categoryManager = new CategoryManager(
+          container,
+          customRulesEngine,
+          handleCustomRulesUpdate,
+        );
+      }
+
+      // Update name if present in imported data
+      try {
+        const data = JSON.parse(text);
+        if (data.name) {
+          const nameInput = document.getElementById('classification-name');
+          if (nameInput) nameInput.value = data.name;
+        }
+      } catch {
+        // Ignore parse error for name extraction
+      }
+
+      // Trigger reclassification
+      handleCustomRulesUpdate();
+
+      // Show success
+      importBtn.textContent = '\u2713 Imported!';
+      setTimeout(() => {
+        importBtn.innerHTML = '';
+        const icon = document.createElement('span');
+        icon.textContent = '\uD83D\uDCE4';
+        importBtn.appendChild(icon);
+        importBtn.appendChild(document.createTextNode(' Import Rules'));
+        importBtn.disabled = false;
+      }, 2000);
+
+      fileInput.value = '';
+
+    } catch (error) {
+      console.error('[Koppen] Import failed:', error);
+      alert(`Import failed: ${error.message}`);
+      importBtn.innerHTML = '';
+      const icon = document.createElement('span');
+      icon.textContent = '\uD83D\uDCE4';
+      importBtn.appendChild(icon);
+      importBtn.appendChild(document.createTextNode(' Import Rules'));
+      importBtn.disabled = false;
+      fileInput.value = '';
+    }
+  });
+
+  section.appendChild(heading);
+  section.appendChild(exportBtn);
+  section.appendChild(importBtn);
+  section.appendChild(fileInput);
+
+  return section;
+}
+
+/**
+ * Create section with button to switch to Koppen mode
+ * @returns {HTMLElement} Switch section element
+ */
+function createSwitchToKoppenSection() {
+  const section = document.createElement('div');
+  section.className = 'builder-panel__reset-section';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'builder-panel__reset-to-koppen';
+  button.textContent = 'Switch to Koppen Mode';
+  button.addEventListener('click', () => {
+    if (confirm('Switch to Koppen mode? This will discard your custom categories and rules.')) {
+      // Clean up custom rules
+      if (categoryManager) {
+        categoryManager.destroy();
+        categoryManager = null;
+      }
+      customRulesEngine = null;
+      classificationMode = 'koppen';
+
+      // Dispatch mode change
+      document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+        detail: { mode: 'koppen' },
+      }));
+
+      // Start Koppen mode
+      startFromKoppen();
+    }
+  });
+
+  section.appendChild(button);
+
+  return section;
+}
+
+/**
+ * Create help message for scratch mode (Story 4.6)
+ * Reserved for future scratch mode implementation
+ * @returns {HTMLElement} Help message element
+ */
+// eslint-disable-next-line no-unused-vars -- Reserved for future scratch mode UI
 function createHelpMessage() {
   const help = document.createElement('div');
   help.className = 'builder-panel__help';
@@ -484,8 +740,10 @@ function createHelpMessage() {
 
 /**
  * Create reset section with button to switch to Köppen (Story 4.6)
+ * Reserved for future scratch mode implementation
  * @returns {HTMLElement} Reset section element
  */
+// eslint-disable-next-line no-unused-vars -- Reserved for future scratch mode UI
 function createResetSection() {
   const section = document.createElement('div');
   section.className = 'builder-panel__reset-section';
@@ -621,7 +879,7 @@ function createExportSection() {
 
       // Fire classification-imported event
       document.dispatchEvent(new CustomEvent('koppen:classification-imported', {
-        detail: { name: classification.name, version: classification.version }
+        detail: { name: classification.name, version: classification.version },
       }));
     } catch (error) {
       console.error('[Koppen] Import failed:', error);
@@ -683,10 +941,10 @@ function createPresetAttribution(preset) {
 }
 
 /**
- * Render placeholder message
+ * Render placeholder message (reserved for future use)
  * @param {string} message - Placeholder text
  */
-function renderPlaceholder(message) {
+function _RENDER_PLACEHOLDER(message) {
   if (!builderPanel) return;
 
   const content = builderPanel.querySelector('.builder-panel__content');
@@ -709,7 +967,7 @@ function trapFocus() {
   if (!builderPanel) return;
 
   const focusable = builderPanel.querySelectorAll(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
   );
 
   if (focusable.length > 0) {
@@ -735,7 +993,7 @@ function open() {
   document.dispatchEvent(
     new CustomEvent('koppen:close-panels', {
       detail: { except: 'builder' },
-    })
+    }),
   );
 
   isOpen = true;
@@ -793,7 +1051,7 @@ function toggle() {
  * @param {string} [sourceURL=null] - Original URL (optional)
  */
 function forkClassification(classification, sourceURL = null) {
-  console.log('[Koppen] Forking classification:', classification.name);
+  logger.log('[Koppen] Forking classification:', classification.name);
 
   try {
     // Create fork with metadata
@@ -806,7 +1064,7 @@ function forkClassification(classification, sourceURL = null) {
     currentClassification = forked;
 
     // Mark as fork mode
-    isForkMode = true;
+    _IS_FORK_MODE = true;
 
     // Update name field
     const nameInput = document.getElementById('classification-name');
@@ -836,7 +1094,7 @@ function forkClassification(classification, sourceURL = null) {
       },
     }));
 
-    console.log('[Koppen] Fork created:', forked.name);
+    logger.log('[Koppen] Fork created:', forked.name);
 
   } catch (error) {
     console.error('[Koppen] Fork failed:', error);
@@ -910,7 +1168,7 @@ function getCurrentClassification() {
       modified: originalClassification
         ? stateManager.isModified(
             { thresholds: thresholdSliders.getAllValues() },
-            originalClassification
+            originalClassification,
           )
         : false,
     },
@@ -939,6 +1197,23 @@ export default {
 
     // Render initial UI
     render();
+
+    // Check if data is already loaded (layer initialized before builder)
+    // Use setTimeout to ensure module is fully loaded
+    setTimeout(() => {
+      try {
+        const features = getClimateFeatures();
+        if (features && features.length > 0) {
+          logger.log('[Koppen] Climate data already loaded:', features.length, 'features');
+          dataLoaded = true;
+          render();
+        } else {
+          logger.log('[Koppen] No features loaded yet, waiting for event');
+        }
+      } catch (err) {
+        logger.log('[Koppen] Waiting for climate data event:', err.message);
+      }
+    }, 100);
   },
 
   /**

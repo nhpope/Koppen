@@ -3,6 +3,12 @@
  * Terminology definitions for educational display
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file defines and exports a static glossary object with hardcoded keys.
+ * Keys are not user-controlled; they are standard climate terminology identifiers.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 export const GLOSSARY = {
   MAT: {
     term: 'MAT',

@@ -4,7 +4,8 @@
  * @module ui/share-modal
  */
 
-import { generateURL, estimateURLSize } from '../export/url-encoder.js';
+import { generateURL } from '../export/url-encoder.js';
+import logger from '../utils/logger.js';
 
 let modalElement = null;
 let isOpen = false;
@@ -298,7 +299,7 @@ export function init() {
     }
   });
 
-  console.log('[Koppen] Share modal initialized');
+  logger.log('[Koppen] Share modal initialized');
 }
 
 /**

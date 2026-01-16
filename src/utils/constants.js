@@ -9,9 +9,17 @@ export const CONSTANTS = {
   MIN_ZOOM: 2,
   MAX_ZOOM: 10,
 
-  // Data
-  CLIMATE_DATA_URL: '/data/climate.topojson',
+  // Data - Hybrid loading configuration
+  CLIMATE_DATA_URL: '/koppen/data/climate.topojson',
+  CLIMATE_BASE_LAYER_URL: '/koppen/data/climate-1deg.geojson',
+  CLIMATE_TILE_INDEX_URL: '/koppen/data/tile-index.json',
+  CLIMATE_DATA_DIR: '/koppen/data',
   GRID_RESOLUTION: 0.25,
+  BASE_LAYER_RESOLUTION: 1.0,
+
+  // Hybrid loading thresholds
+  DETAIL_ZOOM_THRESHOLD: 5, // Switch to detail tiles at zoom >= 5
+  TILE_SIZE: 10, // 10x10 degree tiles
 
   // Performance
   DEBOUNCE_MS: 50,

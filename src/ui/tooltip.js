@@ -3,8 +3,15 @@
  * Shows climate info on hover (desktop) or long-press (mobile)
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses CLIMATE_TYPES using climate code keys from map data.
+ * Keys are not user-controlled; they come from validated climate classification codes.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import { CLIMATE_TYPES } from '../climate/koppen-rules.js';
 import { getClimateColor } from '../utils/colors.js';
+import logger from '../utils/logger.js';
 
 let tooltipElement = null;
 let isVisible = false;
@@ -32,7 +39,7 @@ export function createTooltip() {
   // Set up event listeners
   setupEventListeners();
 
-  console.log('[Koppen] Tooltip created' + (isMobile ? ' (touch mode)' : ' (mouse mode)'));
+  logger.log('[Koppen] Tooltip created' + (isMobile ? ' (touch mode)' : ' (mouse mode)'));
 }
 
 /**

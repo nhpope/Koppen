@@ -5,6 +5,7 @@
 
 import { KOPPEN_RULES } from './koppen-rules.js';
 import { KOPPEN_PRESET } from './presets.js';
+import logger from '../utils/logger.js';
 
 let currentThresholds = null;
 
@@ -16,7 +17,7 @@ export default {
   init(_options = {}) {
     // Load default Köppen preset
     currentThresholds = { ...KOPPEN_PRESET.thresholds };
-    console.log('[Koppen] Climate module initialized with Köppen preset');
+    logger.log('[Koppen] Climate module initialized with Köppen preset');
   },
 
   /**
@@ -71,6 +72,6 @@ export default {
    */
   destroy() {
     currentThresholds = null;
-    console.log('[Koppen] Climate module destroyed');
+    logger.log('[Koppen] Climate module destroyed');
   },
 };

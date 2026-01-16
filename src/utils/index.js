@@ -7,12 +7,13 @@ export { loadClimateData, getClimateData } from './data-loader.js';
 export { CLIMATE_COLORS, getClimateColor } from './colors.js';
 export { encodeState, decodeState } from './url-state.js';
 export { CONSTANTS } from './constants.js';
+import logger from './logger.js';
 
 export default {
   init() {
-    console.log('[Koppen] Utils module initialized');
+    logger.log('[Koppen] Utils module initialized');
   },
   destroy() {
-    console.log('[Koppen] Utils module destroyed');
+    logger.log('[Koppen] Utils module destroyed');
   },
 };

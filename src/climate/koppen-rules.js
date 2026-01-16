@@ -3,6 +3,18 @@
  * Based on Beck et al. 2018
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses climate type data using hardcoded classification keys (Af, Am, etc.).
+ * Keys are not user-controlled; they are standard Köppen classification identifiers.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
+/* eslint-disable sonarjs/no-duplicate-string --
+ * Climate groups ('A', 'B', 'C', 'D', 'E') and rule parameters are intentionally repeated
+ * as they represent domain-specific classification values. Extracting to constants would
+ * reduce readability of the Köppen classification rules.
+ */
+
 export const CLIMATE_TYPES = {
   // Tropical (A)
   Af: {
@@ -366,9 +378,16 @@ export const CLIMATE_TYPES = {
   },
 };
 
+// Pre-computed seasonal indices for optimization
+const SUMMER_MONTHS_NH = [3, 4, 5, 6, 7, 8];
+const WINTER_MONTHS_NH = [9, 10, 11, 0, 1, 2];
+const SUMMER_MONTHS_SH = [9, 10, 11, 0, 1, 2];
+const WINTER_MONTHS_SH = [3, 4, 5, 6, 7, 8];
+
 export const KOPPEN_RULES = {
   /**
    * Classify climate based on temperature and precipitation data
+   * Optimized for batch processing of 21,893+ features
    * @param {Object} data - { temp: number[12], precip: number[12], lat: number }
    * @param {Object} thresholds - Classification thresholds
    * @returns {string} Köppen climate code
@@ -376,39 +395,72 @@ export const KOPPEN_RULES = {
   classify(data, thresholds) {
     const { temp, precip, lat } = data;
 
-    // Calculate derived metrics
-    const MAT = temp.reduce((a, b) => a + b, 0) / 12;
-    const Tmax = Math.max(...temp);
-    const Tmin = Math.min(...temp);
-    const MAP = precip.reduce((a, b) => a + b, 0);
-    const Pdry = Math.min(...precip);
+    // Calculate derived metrics - optimized with single-pass loops
+    let tempSum = 0, precipSum = 0;
+    let Tmax = temp[0], Tmin = temp[0];
+    let Pdry = precip[0];
+    let warmMonthCount = 0;
 
-    // Determine summer/winter months based on hemisphere
+    for (let i = 0; i < 12; i++) {
+      const t = temp[i];
+      const p = precip[i];
+      tempSum += t;
+      precipSum += p;
+      if (t > Tmax) Tmax = t;
+      if (t < Tmin) Tmin = t;
+      if (p < Pdry) Pdry = p;
+      if (t >= 10) warmMonthCount++;
+    }
+
+    const MAT = tempSum / 12;
+    const MAP = precipSum;
+
+    // Use pre-computed seasonal indices
     const isNorthern = lat >= 0;
-    const summerMonths = isNorthern ? [3, 4, 5, 6, 7, 8] : [9, 10, 11, 0, 1, 2];
-    const winterMonths = isNorthern ? [9, 10, 11, 0, 1, 2] : [3, 4, 5, 6, 7, 8];
+    const summerMonths = isNorthern ? SUMMER_MONTHS_NH : SUMMER_MONTHS_SH;
+    const winterMonths = isNorthern ? WINTER_MONTHS_NH : WINTER_MONTHS_SH;
 
-    const Psdry = Math.min(...summerMonths.map(i => precip[i]));
-    const Pwdry = Math.min(...winterMonths.map(i => precip[i]));
-    const Pswet = Math.max(...summerMonths.map(i => precip[i]));
-    const Pwwet = Math.max(...winterMonths.map(i => precip[i]));
+    // Calculate seasonal precipitation in single pass
+    let Psdry = precip[summerMonths[0]], Pwdry = precip[winterMonths[0]];
+    let Pswet = precip[summerMonths[0]], Pwwet = precip[winterMonths[0]];
+    let Psummer = 0, Pwinter = 0;
 
-    const Psummer = summerMonths.reduce((sum, i) => sum + precip[i], 0);
+    for (let j = 0; j < 6; j++) {
+      const ps = precip[summerMonths[j]];
+      const pw = precip[winterMonths[j]];
+      Psummer += ps;
+      Pwinter += pw;
+      if (ps < Psdry) Psdry = ps;
+      if (ps > Pswet) Pswet = ps;
+      if (pw < Pwdry) Pwdry = pw;
+      if (pw > Pwwet) Pwwet = pw;
+    }
 
     // Calculate Pthreshold for B climates (Köppen-Geiger formula)
     // Pthreshold in mm, MAT in °C
-    // Per Köppen: +280mm if 70%+ precip in winter, +140mm if 70%+ in summer
+    // Per Köppen: +280mm if 70%+ precip in summer, +0mm if 70%+ in winter, +140mm if evenly distributed
+    // Use threshold values for customization
+    const aridCoefficient = thresholds.arid_coefficient || 20;
+    const aridSummerOffset = thresholds.arid_summer_offset || 280;
+    const aridWinterOffset = thresholds.arid_winter_offset || 0;
+    const aridEvenOffset = thresholds.arid_even_offset || 140;
+    const aridSeasonalConcentration = thresholds.arid_seasonal_concentration || 0.7;
+
+    // Avoid division by zero
+    const summerRatio = MAP > 0 ? Psummer / MAP : 0;
+    const winterRatio = MAP > 0 ? Pwinter / MAP : 0;
+
     let Pthreshold;
-    if (Psummer / MAP >= 0.7) {
-      Pthreshold = 20 * MAT + 140;  // Summer rainfall dominant (70%+ in summer)
-    } else if (Psummer / MAP <= 0.3) {
-      Pthreshold = 20 * MAT + 280;  // Winter rainfall dominant (70%+ in winter)
+    if (summerRatio >= aridSeasonalConcentration) {
+      Pthreshold = aridCoefficient * MAT + aridSummerOffset;  // Summer rainfall concentrated
+    } else if (winterRatio >= aridSeasonalConcentration) {
+      Pthreshold = aridCoefficient * MAT + aridWinterOffset;  // Winter rainfall concentrated
     } else {
-      Pthreshold = 20 * MAT + 140;  // Evenly distributed
+      Pthreshold = aridCoefficient * MAT + aridEvenOffset;  // Evenly distributed
     }
 
-    // Count warm months (T >= 10°C per Köppen definition)
-    const warmMonths = temp.filter(t => t >= 10).length;
+    // warmMonths already computed above
+    const warmMonths = warmMonthCount;
 
     // Classification decision tree (per Beck et al. 2018)
     // Order: E (polar) → B (arid) → A (tropical) → C/D (temperate/continental)
@@ -437,7 +489,8 @@ export const KOPPEN_RULES = {
       } else if (Pdry >= 100 - MAP / 25) {
         return 'Am';
       }
-        return Psdry < Pwdry ? 'As' : 'Aw';
+      // As vs Aw: Compare seasonal totals (dry season has less total precipitation)
+      return Psummer < Pwinter ? 'As' : 'Aw';
 
     }
 

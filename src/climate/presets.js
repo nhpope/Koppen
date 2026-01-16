@@ -3,6 +3,12 @@
  * @module climate/presets
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses threshold data using keys from the preset configuration.
+ * Keys are not user-controlled; they are hardcoded threshold identifiers.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 // Standard Köppen-Geiger classification thresholds (Beck et al. 2018)
 export const KOPPEN_PRESET = {
   name: 'Köppen-Geiger',
@@ -103,6 +109,41 @@ export const KOPPEN_PRESET = {
         description: 'Annual precip - 25×driest month for Am',
         range: [40, 100],
         step: 5,
+      },
+      arid_coefficient: {
+        value: 20,
+        unit: '',
+        description: 'Arid threshold coefficient (multiplied by MAT)',
+        range: [10, 30],
+        step: 1,
+      },
+      arid_summer_offset: {
+        value: 280,
+        unit: 'mm',
+        description: 'Arid threshold offset for summer-dominant rainfall',
+        range: [0, 400],
+        step: 20,
+      },
+      arid_winter_offset: {
+        value: 0,
+        unit: 'mm',
+        description: 'Arid threshold offset for winter-dominant rainfall',
+        range: [0, 200],
+        step: 20,
+      },
+      arid_even_offset: {
+        value: 140,
+        unit: 'mm',
+        description: 'Arid threshold offset for evenly distributed rainfall',
+        range: [0, 300],
+        step: 20,
+      },
+      arid_seasonal_concentration: {
+        value: 0.7,
+        unit: '',
+        description: 'Seasonal concentration threshold (70% = 0.7)',
+        range: [0.5, 0.9],
+        step: 0.05,
       },
     },
   },
@@ -248,6 +289,41 @@ export const SCRATCH_PRESET = {
         description: 'Annual precip - 25×driest month for Am',
         range: [40, 100],
         step: 5,
+      },
+      arid_coefficient: {
+        value: 10,  // Extreme low
+        unit: '',
+        description: 'Arid threshold coefficient (multiplied by MAT)',
+        range: [10, 30],
+        step: 1,
+      },
+      arid_summer_offset: {
+        value: 0,  // Extreme low (more arid climates)
+        unit: 'mm',
+        description: 'Arid threshold offset for summer-dominant rainfall',
+        range: [0, 400],
+        step: 20,
+      },
+      arid_winter_offset: {
+        value: 0,  // Keep at 0
+        unit: 'mm',
+        description: 'Arid threshold offset for winter-dominant rainfall',
+        range: [0, 200],
+        step: 20,
+      },
+      arid_even_offset: {
+        value: 0,  // Extreme low
+        unit: 'mm',
+        description: 'Arid threshold offset for evenly distributed rainfall',
+        range: [0, 300],
+        step: 20,
+      },
+      arid_seasonal_concentration: {
+        value: 0.9,  // Extreme high (hard to qualify as seasonal)
+        unit: '',
+        description: 'Seasonal concentration threshold (70% = 0.7)',
+        range: [0.5, 0.9],
+        step: 0.05,
       },
     },
   },

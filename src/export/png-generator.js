@@ -5,6 +5,7 @@
  */
 
 import html2canvas from 'html2canvas';
+import logger from '../utils/logger.js';
 
 let isExporting = false;
 
@@ -53,7 +54,7 @@ export default {
         includeLegend = true,
         includeWatermark = true,
         scale = window.devicePixelRatio || 1,
-        quality = 0.95
+        quality = 0.95,
       } = options;
 
       // Get map container
@@ -75,7 +76,7 @@ export default {
         scale,
         useCORS: true,
         logging: false,
-        backgroundColor: '#f8f9fa'
+        backgroundColor: '#f8f9fa',
       });
 
       // Restore legend visibility
@@ -94,7 +95,7 @@ export default {
       });
 
       const duration = performance.now() - startTime;
-      console.log(`[Koppen] PNG export completed in ${duration.toFixed(0)}ms`);
+      logger.log(`[Koppen] PNG export completed in ${duration.toFixed(0)}ms`);
 
       return { blob, duration, width: canvas.width, height: canvas.height };
 
@@ -109,5 +110,5 @@ export default {
    */
   isExporting() {
     return isExporting;
-  }
+  },
 };

@@ -3,6 +3,8 @@
  * @module ui/onboarding-modal
  */
 
+import logger from '../utils/logger.js';
+
 const STORAGE_KEY = 'koppen-onboarding-seen';
 let modalElement = null;
 
@@ -20,7 +22,7 @@ export function init() {
     }, 1000);
   }
 
-  console.log('[Koppen] Onboarding modal initialized');
+  logger.log('[Koppen] Onboarding modal initialized');
 }
 
 /**
@@ -35,6 +37,7 @@ export function show() {
   modalElement.setAttribute('aria-labelledby', 'onboarding-title');
   modalElement.setAttribute('aria-modal', 'true');
 
+  // eslint-disable-next-line no-secrets/no-secrets -- HTML template, not a secret
   modalElement.innerHTML = `
     <div class="onboarding-modal__backdrop" aria-hidden="true"></div>
     <div class="onboarding-modal__content">
@@ -158,7 +161,7 @@ function setupEventListeners() {
  */
 function trapFocus(element) {
   const focusableElements = element.querySelectorAll(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
   );
   const firstFocusable = focusableElements[0];
   const lastFocusable = focusableElements[focusableElements.length - 1];

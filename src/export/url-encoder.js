@@ -3,6 +3,12 @@
  * @module export/url-encoder
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses threshold data using keys from internal preset configuration.
+ * Keys are not user-controlled; they come from KOPPEN_PRESET or Object.keys() iteration.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import pako from 'pako';
 import { KOPPEN_PRESET } from '../climate/presets.js';
 
@@ -24,7 +30,8 @@ function sanitizeString(str, maxLength = 100) {
   // Remove HTML tags, control characters, and limit length
   return str
     .replace(/<[^>]*>/g, '')  // Strip HTML tags
-    .replace(/[\x00-\x1F\x7F]/g, '')  // Remove control chars
+    // eslint-disable-next-line no-control-regex -- Intentionally matching control chars for security
+    .replace(/[\u0000-\u001F\u007F]/g, '')  // Remove control chars
     .trim()
     .slice(0, maxLength);
 }
@@ -217,7 +224,7 @@ export function hasSharedState() {
 export function estimateURLSize(state) {
   try {
     return generateURL(state).length;
-  } catch (error) {
+  } catch {
     return -1;  // Error estimating size
   }
 }

@@ -5,6 +5,7 @@
  */
 
 import builder from '../builder/index.js';  // Story 6.6
+import logger from '../utils/logger.js';
 
 let infoBar = null;
 let isVisible = false;
@@ -21,7 +22,8 @@ function sanitizeName(name) {
   // Remove HTML tags and control characters
   return name
     .replace(/<[^>]*>/g, '')
-    .replace(/[\x00-\x1F\x7F]/g, '')
+    // eslint-disable-next-line no-control-regex -- Intentionally matching control chars for security
+    .replace(/[\u0000-\u001F\u007F]/g, '') // Remove control characters
     .trim()
     .slice(0, 100) || 'Shared Classification';
 }
@@ -66,6 +68,19 @@ function renderContent(classificationName) {
   text.className = 'shared-info-bar__text';
   text.textContent = `Viewing: ${safeName} by Anonymous`;
 
+  // View Differences button (B.4 improvement)
+  const diffBtn = document.createElement('button');
+  diffBtn.type = 'button';
+  diffBtn.className = 'shared-info-bar__diff-btn';
+  diffBtn.setAttribute('aria-label', 'Compare this classification with standard Köppen');
+  diffBtn.textContent = 'View Differences';
+  diffBtn.addEventListener('click', () => {
+    // Open comparison mode via builder
+    document.dispatchEvent(new CustomEvent('koppen:open-comparison', {
+      detail: { source: 'shared-info-bar' },
+    }));
+  });
+
   // Fork button (Story 6.6)
   const forkBtn = document.createElement('button');
   forkBtn.type = 'button';
@@ -88,6 +103,7 @@ function renderContent(classificationName) {
   // Assemble
   infoBar.appendChild(icon);
   infoBar.appendChild(text);
+  infoBar.appendChild(diffBtn);
   infoBar.appendChild(forkBtn);
   infoBar.appendChild(closeBtn);
 }
@@ -99,7 +115,7 @@ function renderContent(classificationName) {
 async function handleFork(forkBtn) {
   try {
     if (!currentSharedClassification) {
-      console.error('[Koppen] No shared classification to fork');
+      logger.error('[Koppen] No shared classification to fork');
       return;
     }
 
@@ -117,7 +133,7 @@ async function handleFork(forkBtn) {
     dismiss();
 
     // Show success feedback
-    console.log('[Koppen] Fork completed successfully');
+    logger.log('[Koppen] Fork completed successfully');
 
     // Fire fork completed event
     document.dispatchEvent(new CustomEvent('koppen:fork-completed', {
@@ -125,7 +141,7 @@ async function handleFork(forkBtn) {
     }));
 
   } catch (error) {
-    console.error('[Koppen] Fork failed:', error);
+    logger.error('[Koppen] Fork failed:', error);
 
     // Re-enable button
     forkBtn.disabled = false;
@@ -205,7 +221,7 @@ export function init() {
     }
   });
 
-  console.log('[Koppen] Shared info bar initialized');
+  logger.log('[Koppen] Shared info bar initialized');
 }
 
 /**

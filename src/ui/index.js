@@ -10,6 +10,7 @@ import header from './header.js';
 import shareModal from './share-modal.js';  // Story 6.3
 import sharedInfoBar from './shared-info-bar.js';  // Story 6.4
 import onboardingModal from './onboarding-modal.js';  // First-time user guidance
+import logger from '../utils/logger.js';
 
 let infoController = null;
 
@@ -45,7 +46,7 @@ export default {
     // Initialize onboarding modal for first-time users
     onboardingModal.init();
 
-    console.log('[Koppen] UI module initialized');
+    logger.log('[Koppen] UI module initialized');
   },
 
   /**
@@ -103,7 +104,7 @@ export default {
     shareModal.destroy();  // Story 6.3
     sharedInfoBar.destroy();  // Story 6.4
     onboardingModal.destroy();
-    console.log('[Koppen] UI module destroyed');
+    logger.log('[Koppen] UI module destroyed');
   },
 };
 

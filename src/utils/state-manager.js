@@ -4,6 +4,12 @@
  * @module utils/state-manager
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses classification state using keys from validated internal structures.
+ * Keys are not user-controlled; validation via validateStructure() ensures safe access.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 /**
  * Deep clone classification state
  * Uses JSON serialization to avoid reference sharing

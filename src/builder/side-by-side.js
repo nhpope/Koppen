@@ -5,6 +5,12 @@
  * Story 5.4: Dual synchronized Leaflet instances for comparing custom vs Köppen
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses map/view configuration using internal structure keys.
+ * Keys are not user-controlled; they come from comparison state objects.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import L from 'leaflet';
 import { CONSTANTS } from '../utils/constants.js';
 

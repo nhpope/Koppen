@@ -4,11 +4,18 @@
  * Includes classification rules, glossary terms, and example locations
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses climate type data using keys from CLIMATE_TYPES and GLOSSARY.
+ * Keys are not user-controlled; they come from internal configuration objects.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import { CLIMATE_TYPES } from '../climate/koppen-rules.js';
 import { getClimateColor } from '../utils/colors.js';
 import { EXAMPLE_LOCATIONS } from '../climate/presets.js';
 import { GLOSSARY } from '../climate/glossary.js';
 import { initExpandableTerms } from './expandable-term.js';
+import logger from '../utils/logger.js';
 
 let panelElement = null;
 let isOpen = false;
@@ -37,7 +44,7 @@ export function createClimateInfo(container) {
   // Set up event listeners
   setupEventListeners();
 
-  console.log('[Koppen] Climate info panel created');
+  logger.log('[Koppen] Climate info panel created');
 
   return {
     show: showClimateInfo,
@@ -187,7 +194,7 @@ export function showClimateInfo(data) {
     closeBtn.focus();
   }
 
-  console.log(`[Koppen] Climate info shown: ${type}`);
+  logger.log(`[Koppen] Climate info shown: ${type}`);
 }
 
 /**

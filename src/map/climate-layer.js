@@ -1,21 +1,52 @@
 /**
  * Climate Layer Module
  * Handles rendering and interaction with climate data on the map
+ * Supports hybrid loading: base layer (1°) + detail tiles (0.25°)
+ * Supports both Koppen threshold-based and custom rule-based classification
+ */
+
+/* eslint-disable security/detect-object-injection --
+ * This file accesses climate data using keys from internal classification structures.
+ * Keys are not user-controlled; they come from KOPPEN_PRESET or Object.keys() iteration.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
  */
 
 import L from 'leaflet';
 import { getClimateColor } from '../utils/colors.js';
 import { CLIMATE_TYPES, KOPPEN_RULES } from '../climate/koppen-rules.js';
 import { KOPPEN_PRESET, getThresholdValues } from '../climate/presets.js';
+import { CONSTANTS } from '../utils/constants.js';
+import {
+  loadBaseLayer,
+  loadTileIndex,
+  loadTile,
+  getTilesForBounds,
+} from '../utils/data-loader.js';
+import logger from '../utils/logger.js';
 
 // Cache the default thresholds as a flat object for the classify function
 const DEFAULT_THRESHOLDS = getThresholdValues(KOPPEN_PRESET);
 
 let climateLayer = null;
+let baseLayer = null; // Base layer (1° resolution)
+let detailLayer = null; // Detail tiles layer (0.25° resolution)
 let classifiedFeatures = null;
+let originalBaseFeatures = null; // Store original unclassified base layer features
 let selectedLayer = null;
 let activeFilter = null;
 let map = null;
+let currentMode = 'base'; // 'base' or 'detail'
+const loadedTileFiles = new Set(); // Track which tiles are loaded
+const loadedTileFeatures = new Map(); // Store original unclassified tile features for reclassification
+
+// Track current thresholds for dynamically loaded tiles
+let currentThresholds = DEFAULT_THRESHOLDS;
+
+// Custom rules support
+// eslint-disable-next-line no-unused-vars -- State tracking for future mode-dependent features
+let classificationMode = 'koppen'; // 'koppen' or 'custom'
+// eslint-disable-next-line no-unused-vars -- Reference stored for future custom rules integration
+let customRulesEngine = null; // Reference to CustomRulesEngine when in custom mode
 
 // Style constants
 const DEFAULT_STYLE = {
@@ -38,23 +69,56 @@ const DIMMED_STYLE = {
   opacity: 0.15,
 };
 
+// Style for unclassified features (custom rules mode)
+const UNCLASSIFIED_STYLE = {
+  fillColor: '#E5E5E5',
+  fillOpacity: 0.3,
+  color: '#AAAAAA',
+  weight: 0.25,
+  opacity: 0.3,
+};
+
 /**
  * Classify all features using Köppen rules
+ * Optimized for performance with 21,893+ features
  * @param {Array} features - GeoJSON features
  * @param {Object} thresholds - Classification thresholds
  * @returns {Array} Classified features
  */
 function classifyFeatures(features, thresholds = DEFAULT_THRESHOLDS) {
-  return features.map(feature => {
+  // Pre-compute reusable values outside the loop
+  const featureCount = features.length;
+  const result = new Array(featureCount);
+
+  // Process features with optimized property access
+  for (let idx = 0; idx < featureCount; idx++) {
+    const feature = features[idx];
     const props = feature.properties;
 
-    // Extract monthly temperature and precipitation
-    const temps = [];
-    const precips = [];
-    for (let i = 1; i <= 12; i++) {
-      temps.push(props[`t${i}`] ?? 0);
-      precips.push(props[`p${i}`] ?? 0);
+    // If climate_type is already present (pre-classified), use it
+    if (props.climate_type) {
+      result[idx] = {
+        ...feature,
+        properties: {
+          ...props,
+          classifiedType: props.climate_type,
+        },
+      };
+      continue;
     }
+
+    // Otherwise, classify from monthly data
+    // Optimized: direct property access instead of dynamic key construction
+    const temps = [
+      props.t1 ?? 0, props.t2 ?? 0, props.t3 ?? 0, props.t4 ?? 0,
+      props.t5 ?? 0, props.t6 ?? 0, props.t7 ?? 0, props.t8 ?? 0,
+      props.t9 ?? 0, props.t10 ?? 0, props.t11 ?? 0, props.t12 ?? 0,
+    ];
+    const precips = [
+      props.p1 ?? 0, props.p2 ?? 0, props.p3 ?? 0, props.p4 ?? 0,
+      props.p5 ?? 0, props.p6 ?? 0, props.p7 ?? 0, props.p8 ?? 0,
+      props.p9 ?? 0, props.p10 ?? 0, props.p11 ?? 0, props.p12 ?? 0,
+    ];
 
     // Classify using Köppen rules
     const climateType = KOPPEN_RULES.classify(
@@ -64,7 +128,7 @@ function classifyFeatures(features, thresholds = DEFAULT_THRESHOLDS) {
 
     const climateInfo = CLIMATE_TYPES[climateType] || { name: 'Unknown', group: '?' };
 
-    return {
+    result[idx] = {
       ...feature,
       properties: {
         ...props,
@@ -73,7 +137,9 @@ function classifyFeatures(features, thresholds = DEFAULT_THRESHOLDS) {
         climate_group: climateInfo.group,
       },
     };
-  });
+  }
+
+  return result;
 }
 
 /**
@@ -82,16 +148,41 @@ function classifyFeatures(features, thresholds = DEFAULT_THRESHOLDS) {
  * @returns {Object} Leaflet style object
  */
 function getFeatureStyle(feature) {
-  const type = feature.properties.climate_type;
+  const props = feature.properties;
+  const type = props.climate_type;
+  const isClassified = props.classified !== false && type != null;
+
+  // Handle unclassified features (custom rules mode)
+  if (!isClassified && classificationMode === 'custom') {
+    return { ...UNCLASSIFIED_STYLE };
+  }
+
+  // Check if feature matches active filter
   const isMatch = !activeFilter || type === activeFilter;
 
-  return {
-    fillColor: getClimateColor(type),
+  // Use custom color if available, otherwise use Koppen color
+  const fillColor = props.climate_color || getClimateColor(type);
+
+  const style = {
+    fillColor,
     fillOpacity: isMatch ? DEFAULT_STYLE.fillOpacity : DIMMED_STYLE.fillOpacity,
     color: isMatch ? DEFAULT_STYLE.color : DIMMED_STYLE.color,
     weight: isMatch ? DEFAULT_STYLE.weight : DIMMED_STYLE.weight,
     opacity: isMatch ? DEFAULT_STYLE.opacity : DIMMED_STYLE.opacity,
   };
+
+  // Debug: Log occasional styles to check values
+  if (Math.random() < 0.001) {
+    logger.log('[Koppen] getFeatureStyle called:', {
+      type,
+      activeFilter,
+      isMatch,
+      fillOpacity: style.fillOpacity,
+      expected: DEFAULT_STYLE.fillOpacity,
+    });
+  }
+
+  return style;
 }
 
 /**
@@ -153,6 +244,28 @@ function onFeatureClick(e) {
 function selectCell(layer) {
   const props = layer.feature.properties;
 
+  // Debug: Log all properties for clicked cell
+  logger.log('=== CLICKED CELL DATA ===');
+  logger.log('Climate Type:', props.classifiedType || props.climate_type);
+  logger.log('Coordinates:', layer.feature.geometry.coordinates[0][0]);
+  logger.log('---');
+  logger.log('Temperature:');
+  logger.log('  MAT (Mean Annual):', props.mat?.toFixed(1), '°C');
+  logger.log('  TMAX (Warmest month):', props.tmax?.toFixed(1), '°C');
+  logger.log('  TMIN (Coldest month):', props.tmin?.toFixed(1), '°C');
+  logger.log('---');
+  logger.log('Precipitation (mm):');
+  logger.log('  MAP (Mean Annual):', props.map?.toFixed(1), 'mm');
+  logger.log('  PDRY (Driest month):', props.pdry?.toFixed(1), 'mm');
+  logger.log('  PSUM (Summer total):', props.psum?.toFixed(1), 'mm');
+  logger.log('  PWIN (Winter total):', props.pwin?.toFixed(1), 'mm');
+  logger.log('---');
+  logger.log('Monthly Temperatures (°C):',
+    [1,2,3,4,5,6,7,8,9,10,11,12].map(m => props[`t${m}`]?.toFixed(1)).join(', '));
+  logger.log('Monthly Precipitation (mm):',
+    [1,2,3,4,5,6,7,8,9,10,11,12].map(m => props[`p${m}`]?.toFixed(1)).join(', '));
+  logger.log('========================');
+
   // If clicking same cell, deselect
   if (selectedLayer === layer) {
     deselectCell();
@@ -166,6 +279,12 @@ function selectCell(layer) {
 
   // Select new
   selectedLayer = layer;
+
+  // Apply filter to dim all other climate types
+  const climateType = props.classifiedType || props.climate_type;
+  filterByType(climateType);
+
+  // Apply selected style on top of filter
   layer.setStyle({
     ...getFeatureStyle(layer.feature),
     ...SELECTED_STYLE,
@@ -177,7 +296,7 @@ function selectCell(layer) {
     detail: {
       lat: props.lat,
       lon: props.lon,
-      type: props.climate_type,
+      type: climateType,
       name: props.climate_name,
       group: props.climate_group,
       data: props,
@@ -186,10 +305,10 @@ function selectCell(layer) {
 
   // Also select in legend
   document.dispatchEvent(new CustomEvent('koppen:climate-selected', {
-    detail: { type: props.climate_type, fromMap: true },
+    detail: { type: climateType, fromMap: true },
   }));
 
-  console.log(`[Koppen] Cell selected: ${props.climate_type} at [${props.lat}, ${props.lon}]`);
+  logger.log(`[Koppen] Cell selected: ${climateType} at [${props.lat}, ${props.lon}]`);
 }
 
 /**
@@ -199,11 +318,16 @@ export function deselectCell() {
   if (!selectedLayer) return;
 
   const props = selectedLayer.feature.properties;
+  const climateType = props.classifiedType || props.climate_type;
+
+  // Clear filter to restore full opacity to all cells
+  clearFilter();
+
   selectedLayer.setStyle(getFeatureStyle(selectedLayer.feature));
   selectedLayer = null;
 
   document.dispatchEvent(new CustomEvent('koppen:cell-deselected', {
-    detail: { type: props.climate_type },
+    detail: { type: climateType },
   }));
 }
 
@@ -254,7 +378,7 @@ export function createClimateLayer(geojson, mapInstance, thresholds) {
     },
   }));
 
-  console.log(`[Koppen] Climate layer created: ${classifiedFeatures.length} features`);
+  logger.log(`[Koppen] Climate layer created: ${classifiedFeatures.length} features`);
 
   return climateLayer;
 }
@@ -282,20 +406,41 @@ function calculateStats(features) {
 export function filterByType(type) {
   activeFilter = type;
 
-  if (!climateLayer) return;
+  logger.log(`[Koppen] Filtering by type: ${type || 'none'}`);
 
-  // Update all feature styles
-  climateLayer.eachLayer(layer => {
-    const featureType = layer.feature.properties.climate_type;
-    const isMatch = !type || featureType === type;
+  // Determine which layer(s) to update
+  const layersToUpdate = [];
+  if (climateLayer) layersToUpdate.push(climateLayer);
+  if (baseLayer) layersToUpdate.push(baseLayer);
+  if (detailLayer) layersToUpdate.push(detailLayer);
 
-    layer.setStyle(getFeatureStyle(layer.feature));
+  if (layersToUpdate.length === 0) {
+    console.warn('[Koppen] No layers to filter');
+    return;
+  }
 
-    // Bring matching features to front
-    if (isMatch && type) {
-      layer.bringToFront();
-    }
+  let matchCount = 0;
+  let dimmedCount = 0;
+
+  // Update all feature styles across all layers
+  layersToUpdate.forEach(layerGroup => {
+    layerGroup.eachLayer(layer => {
+      const featureType = layer.feature.properties.climate_type || layer.feature.properties.classifiedType;
+      const isMatch = !type || featureType === type;
+
+      layer.setStyle(getFeatureStyle(layer.feature));
+
+      // Bring matching features to front
+      if (isMatch && type) {
+        layer.bringToFront();
+        matchCount++;
+      } else if (type) {
+        dimmedCount++;
+      }
+    });
   });
+
+  logger.log(`[Koppen] Filter applied: ${matchCount} matching, ${dimmedCount} dimmed`);
 
   // Keep selected layer on top
   if (selectedLayer) {
@@ -307,7 +452,7 @@ export function filterByType(type) {
     detail: { type, active: !!type },
   }));
 
-  console.log(`[Koppen] Filter ${type ? 'applied: ' + type : 'cleared'}`);
+  logger.log(`[Koppen] Filter ${type ? 'applied: ' + type : 'cleared'}`);
 }
 
 /**
@@ -329,35 +474,118 @@ export function getActiveFilter() {
 
 /**
  * Reclassify all features with new thresholds
+ * Works with both legacy single-layer and hybrid loading
  * @param {Object} thresholds - New thresholds
  */
 export function reclassify(thresholds) {
-  if (!climateLayer || !classifiedFeatures) return;
+  // Check if we have any layer to reclassify
+  const hasLegacyLayer = climateLayer && classifiedFeatures;
+  const hasHybridLayers = (baseLayer || detailLayer) && classifiedFeatures;
 
-  // Get original features (before classification)
-  const originalFeatures = classifiedFeatures.map(f => ({
-    ...f,
-    properties: { ...f.properties },
-  }));
+  if (!hasLegacyLayer && !hasHybridLayers) {
+    console.warn('[Koppen] No climate layer to reclassify');
+    return;
+  }
 
-  // Reclassify
-  classifiedFeatures = classifyFeatures(originalFeatures, thresholds);
+  // Store current thresholds for use when loading new tiles dynamically
+  currentThresholds = thresholds;
 
-  // Update layer
-  climateLayer.clearLayers();
-  climateLayer.addData({
-    type: 'FeatureCollection',
-    features: classifiedFeatures,
-  });
+  logger.log('[Koppen] Reclassifying with new thresholds...');
 
-  // Rebind events
-  climateLayer.eachLayer(layer => {
-    layer.on({
-      mouseover: onFeatureHover,
-      mouseout: onFeatureLeave,
-      click: onFeatureClick,
+  // Update the appropriate layer(s)
+  if (climateLayer) {
+    // Legacy single-layer approach
+    const originalFeatures = classifiedFeatures.map(f => ({
+      ...f,
+      properties: { ...f.properties },
+    }));
+
+    classifiedFeatures = classifyFeatures(originalFeatures, thresholds);
+
+    climateLayer.clearLayers();
+    climateLayer.addData({
+      type: 'FeatureCollection',
+      features: classifiedFeatures,
     });
-  });
+
+    // Rebind events
+    climateLayer.eachLayer(layer => {
+      layer.on({
+        mouseover: onFeatureHover,
+        mouseout: onFeatureLeave,
+        click: onFeatureClick,
+      });
+    });
+  } else if (baseLayer || detailLayer) {
+    // Hybrid loading approach - update currently visible layer
+    if (currentMode === 'base' && baseLayer && originalBaseFeatures) {
+      // Remove pre-classified climate_type to force reclassification
+      const unclassifiedFeatures = originalBaseFeatures.map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          climate_type: undefined,
+          classifiedType: undefined,
+        },
+      }));
+
+      // Reclassify base layer using stored original features
+      classifiedFeatures = classifyFeatures(unclassifiedFeatures, thresholds);
+
+      baseLayer.clearLayers();
+      baseLayer.addData({
+        type: 'FeatureCollection',
+        features: classifiedFeatures,
+      });
+
+      baseLayer.eachLayer(layer => {
+        layer.on({
+          mouseover: onFeatureHover,
+          mouseout: onFeatureLeave,
+          click: onFeatureClick,
+        });
+      });
+    } else if (currentMode === 'detail' && detailLayer) {
+      // In detail mode, reclassify ALL loaded detail tiles
+      const allDetailFeatures = [];
+
+      // Collect and reclassify all loaded tile features
+      // eslint-disable-next-line no-unused-vars -- tileFile key not needed, iterating for features only
+      for (const [, features] of loadedTileFeatures) {
+        // Remove pre-classified climate_type to force reclassification
+        const unclassifiedFeatures = features.map(f => ({
+          ...f,
+          properties: {
+            ...f.properties,
+            climate_type: undefined,
+            classifiedType: undefined,
+          },
+        }));
+
+        const classifiedTileFeatures = classifyFeatures(unclassifiedFeatures, thresholds);
+        allDetailFeatures.push(...classifiedTileFeatures);
+      }
+
+      logger.log(`[Koppen] Reclassifying ${allDetailFeatures.length} detail features from ${loadedTileFeatures.size} tiles`);
+
+      // Update detail layer
+      detailLayer.clearLayers();
+      detailLayer.addData({
+        type: 'FeatureCollection',
+        features: allDetailFeatures,
+      });
+
+      detailLayer.eachLayer(layer => {
+        layer.on({
+          mouseover: onFeatureHover,
+          mouseout: onFeatureLeave,
+          click: onFeatureClick,
+        });
+      });
+
+      classifiedFeatures = allDetailFeatures;
+    }
+  }
 
   // Calculate new stats
   const stats = calculateStats(classifiedFeatures);
@@ -369,6 +597,8 @@ export function reclassify(thresholds) {
       stats,
     },
   }));
+
+  logger.log(`[Koppen] Reclassified ${classifiedFeatures.length} features`);
 }
 
 /**
@@ -395,19 +625,472 @@ export function removeClimateLayer() {
   if (climateLayer && map) {
     map.removeLayer(climateLayer);
   }
+  if (baseLayer && map) {
+    map.removeLayer(baseLayer);
+  }
+  if (detailLayer && map) {
+    map.removeLayer(detailLayer);
+  }
   climateLayer = null;
+  baseLayer = null;
+  detailLayer = null;
   classifiedFeatures = null;
   selectedLayer = null;
   activeFilter = null;
+  loadedTileFiles.clear();
 }
+
+/**
+ * Create hybrid climate layer (base + detail tiles)
+ * Loads base layer initially, switches to tiles on zoom
+ * @param {L.Map} mapInstance - Leaflet map instance
+ * @param {Object} thresholds - Classification thresholds
+ * @returns {Promise<void>}
+ */
+export async function createHybridClimateLayer(mapInstance, thresholds) {
+  map = mapInstance;
+
+  try {
+    // Load base layer first
+    const baseData = await loadBaseLayer();
+
+    // Store original unclassified features for reclassification
+    originalBaseFeatures = baseData.features;
+
+    // Classify base layer features
+    classifiedFeatures = classifyFeatures(baseData.features, thresholds);
+
+    // Create base layer
+    baseLayer = L.geoJSON({
+      type: 'FeatureCollection',
+      features: classifiedFeatures,
+    }, {
+      style: getFeatureStyle,
+      onEachFeature: (feature, layer) => {
+        layer.on({
+          mouseover: onFeatureHover,
+          mouseout: onFeatureLeave,
+          click: onFeatureClick,
+        });
+      },
+    });
+
+    baseLayer.addTo(map);
+    currentMode = 'base';
+
+    logger.log(`[Koppen] Base layer created: ${classifiedFeatures.length} features`);
+
+    // Load tile index in background
+    await loadTileIndex();
+
+    // Set up zoom/move handlers for tile loading
+    setupHybridLoadingHandlers();
+
+    // Dispatch ready event
+    document.dispatchEvent(new CustomEvent('koppen:layer-ready', {
+      detail: {
+        count: classifiedFeatures.length,
+        mode: 'base',
+        stats: calculateStats(classifiedFeatures),
+      },
+    }));
+
+    // Handle base map clicks to deselect
+    map.on('click', () => {
+      deselectCell();
+      clearFilter();
+    });
+
+  } catch (error) {
+    console.error('[Koppen] Failed to create hybrid climate layer:', error);
+    throw error;
+  }
+}
+
+/**
+ * Set up handlers for hybrid loading (zoom/pan events)
+ */
+function setupHybridLoadingHandlers() {
+  let loadingTiles = false;
+
+  const handleViewChange = async () => {
+    const zoom = map.getZoom();
+
+    // Switch to detail mode at zoom threshold
+    if (zoom >= CONSTANTS.DETAIL_ZOOM_THRESHOLD && currentMode === 'base') {
+      await switchToDetailMode();
+    }
+    // Switch back to base mode when zoomed out
+    else if (zoom < CONSTANTS.DETAIL_ZOOM_THRESHOLD && currentMode === 'detail') {
+      await switchToBaseMode();
+    }
+    // Load additional tiles in detail mode
+    else if (currentMode === 'detail' && !loadingTiles) {
+      loadingTiles = true;
+      await loadVisibleTiles();
+      loadingTiles = false;
+    }
+  };
+
+  map.on('zoomend moveend', handleViewChange);
+}
+
+/**
+ * Switch from base layer to detail tiles
+ */
+async function switchToDetailMode() {
+  logger.log('[Koppen] Switching to detail mode (0.25° tiles)');
+
+  // Create detail layer if it doesn't exist
+  if (!detailLayer) {
+    detailLayer = L.geoJSON(null, {
+      style: getFeatureStyle,
+      onEachFeature: (feature, layer) => {
+        layer.on({
+          mouseover: onFeatureHover,
+          mouseout: onFeatureLeave,
+          click: onFeatureClick,
+        });
+      },
+    });
+  }
+
+  // Add detail layer and hide base layer
+  detailLayer.addTo(map);
+  if (baseLayer) {
+    map.removeLayer(baseLayer);
+  }
+
+  currentMode = 'detail';
+
+  // Load tiles for current view
+  await loadVisibleTiles();
+
+  document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+    detail: { mode: 'detail' },
+  }));
+}
+
+/**
+ * Switch from detail tiles back to base layer
+ */
+async function switchToBaseMode() {
+  logger.log('[Koppen] Switching to base mode (1° layer)');
+
+  // Show base layer and hide detail layer
+  if (baseLayer) {
+    baseLayer.addTo(map);
+  }
+  if (detailLayer) {
+    map.removeLayer(detailLayer);
+  }
+
+  currentMode = 'base';
+
+  document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+    detail: { mode: 'base' },
+  }));
+}
+
+/**
+ * Show loading indicator
+ */
+function showLoadingIndicator(message = 'Loading tiles...') {
+  let indicator = document.getElementById('koppen-loading');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'koppen-loading';
+    indicator.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(20, 184, 166, 0.95);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    `;
+    document.body.appendChild(indicator);
+  }
+  indicator.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <circle cx="12" cy="12" r="10" stroke-width="3" opacity="0.25"/>
+      <path d="M12 2 A10 10 0 0 1 22 12" stroke-width="3" stroke-linecap="round">
+        <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+      </path>
+    </svg>
+    <span>${message}</span>
+  `;
+  indicator.style.display = 'flex';
+}
+
+/**
+ * Hide loading indicator
+ */
+function hideLoadingIndicator() {
+  const indicator = document.getElementById('koppen-loading');
+  if (indicator) {
+    indicator.style.display = 'none';
+  }
+}
+
+/**
+ * Load tiles visible in current viewport
+ */
+async function loadVisibleTiles() {
+  const bounds = map.getBounds();
+  const visibleTiles = await getTilesForBounds(bounds);
+
+  logger.log(`[Koppen] Checking ${visibleTiles.length} tiles for current view`);
+  logger.log(`[Koppen] Map bounds: ${bounds.toBBoxString()}`);
+
+  // Filter out already loaded tiles
+  const tilesToLoad = visibleTiles.filter(tile => !loadedTileFiles.has(tile.file));
+
+  if (tilesToLoad.length === 0) {
+    logger.log('[Koppen] All visible tiles already loaded');
+    return; // All visible tiles already loaded
+  }
+
+  logger.log(`[Koppen] Loading ${tilesToLoad.length} visible tiles`);
+  logger.log('[Koppen] Tiles to load:', tilesToLoad.map(t => t.file));
+  showLoadingIndicator(`Loading ${tilesToLoad.length} tiles...`);
+
+  // Track layers before adding new data for style application
+  const layerCountBefore = detailLayer ? detailLayer.getLayers().length : 0;
+
+  // Load all visible tiles in parallel
+  const tilePromises = tilesToLoad.map(async (tile) => {
+    try {
+      const geojson = await loadTile(tile.file);
+
+      // Store original unclassified features for reclassification
+      loadedTileFeatures.set(tile.file, geojson.features);
+
+      // Classify tile features using CURRENT thresholds (not default)
+      const classifiedTileFeatures = classifyFeatures(geojson.features, currentThresholds);
+
+      logger.log(`[Koppen] Tile ${tile.file} - Sample feature:`, {
+        climateType: classifiedTileFeatures[0]?.properties.climate_type,
+        classifiedType: classifiedTileFeatures[0]?.properties.classifiedType,
+        classified: classifiedTileFeatures[0]?.properties.classified,
+        hasColor: !!classifiedTileFeatures[0]?.properties.climate_color,
+      });
+
+      // Add to detail layer
+      if (detailLayer) {
+        detailLayer.addData({
+          type: 'FeatureCollection',
+          features: classifiedTileFeatures,
+        });
+      }
+
+      // Mark as loaded
+      loadedTileFiles.add(tile.file);
+
+      return classifiedTileFeatures.length;
+    } catch (error) {
+      console.error(`[Koppen] Failed to load tile ${tile.file}:`, error);
+      return 0;
+    }
+  });
+
+  const counts = await Promise.all(tilePromises);
+  const totalFeatures = counts.reduce((sum, count) => sum + count, 0);
+
+  hideLoadingIndicator();
+
+  logger.log(`[Koppen] Loaded ${totalFeatures} features from ${tilesToLoad.length} tiles`);
+  logger.log(`[Koppen] Total tiles loaded: ${loadedTileFiles.size}`);
+
+  // CRITICAL FIX: Explicitly apply styles to ALL newly added layers
+  // This ensures consistent opacity regardless of Leaflet's internal style caching
+  if (detailLayer && totalFeatures > 0) {
+    const allLayers = detailLayer.getLayers();
+    const newLayerCount = allLayers.length - layerCountBefore;
+
+    logger.log(`[Koppen] Applying styles to ${newLayerCount} newly added layers`);
+
+    // Apply styles to new layers (those added after layerCountBefore)
+    for (let i = layerCountBefore; i < allLayers.length; i++) {
+      const layer = allLayers[i];
+      if (layer && layer.feature) {
+        const style = getFeatureStyle(layer.feature);
+        layer.setStyle(style);
+      }
+    }
+
+    // If there's an active filter, also apply filter styling
+    if (activeFilter) {
+      logger.log(`[Koppen] Reapplying filter (${activeFilter}) to newly loaded tiles`);
+      for (let i = layerCountBefore; i < allLayers.length; i++) {
+        const layer = allLayers[i];
+        if (layer && layer.feature) {
+          const featureType = layer.feature.properties.climate_type || layer.feature.properties.classifiedType;
+          const isMatch = featureType === activeFilter;
+          if (!isMatch) {
+            layer.setStyle(getFeatureStyle(layer.feature));
+          }
+        }
+      }
+    }
+
+    // Keep selected layer on top
+    if (selectedLayer) {
+      selectedLayer.bringToFront();
+    }
+  }
+
+  document.dispatchEvent(new CustomEvent('koppen:tiles-loaded', {
+    detail: {
+      tilesLoaded: tilesToLoad.length,
+      totalTiles: loadedTileFiles.size,
+      features: totalFeatures,
+    },
+  }));
+}
+
+/**
+ * Reclassify all features using custom rules engine
+ * @param {CustomRulesEngine} engine - Custom rules engine instance
+ */
+export function reclassifyWithCustomRules(engine) {
+  if (!engine) {
+    console.warn('[Koppen] No custom rules engine provided');
+    return;
+  }
+
+  // Update module state
+  classificationMode = 'custom';
+  customRulesEngine = engine;
+
+  logger.log('[Koppen] Reclassifying with custom rules...');
+
+  // Get original features to reclassify
+  let featuresToClassify = [];
+
+  if (currentMode === 'base' && originalBaseFeatures) {
+    featuresToClassify = originalBaseFeatures;
+  } else if (currentMode === 'detail' && loadedTileFeatures.size > 0) {
+    // Collect all detail features
+    for (const [, features] of loadedTileFeatures) {
+      featuresToClassify.push(...features);
+    }
+  } else if (classifiedFeatures) {
+    // Fallback to current features (strip existing classification)
+    featuresToClassify = classifiedFeatures.map(f => ({
+      ...f,
+      properties: {
+        ...f.properties,
+        climate_type: undefined,
+        climate_name: undefined,
+        climate_color: undefined,
+        classified: undefined,
+      },
+    }));
+  }
+
+  if (featuresToClassify.length === 0) {
+    console.warn('[Koppen] No features to classify');
+    return;
+  }
+
+  // Classify using custom rules engine
+  const result = engine.classifyAll(featuresToClassify);
+  const allFeatures = [...result.classified, ...result.unclassified];
+
+  // Update the appropriate layer
+  const targetLayer = currentMode === 'base' ? baseLayer : detailLayer || climateLayer;
+
+  if (targetLayer) {
+    targetLayer.clearLayers();
+    targetLayer.addData({
+      type: 'FeatureCollection',
+      features: allFeatures,
+    });
+
+    // Rebind events
+    targetLayer.eachLayer(layer => {
+      layer.on({
+        mouseover: onFeatureHover,
+        mouseout: onFeatureLeave,
+        click: onFeatureClick,
+      });
+    });
+  }
+
+  // Store classified features
+  classifiedFeatures = allFeatures;
+
+  // Dispatch stats event for category manager
+  document.dispatchEvent(new CustomEvent('koppen:classification-stats', {
+    detail: result.stats,
+  }));
+
+  // Dispatch classification updated event
+  document.dispatchEvent(new CustomEvent('koppen:classification-updated', {
+    detail: {
+      count: allFeatures.length,
+      stats: result.stats,
+      mode: 'custom',
+    },
+  }));
+
+  logger.log(`[Koppen] Custom rules classification complete: ${result.stats.classified} classified, ${result.stats.unclassified} unclassified`);
+}
+
+/**
+ * Switch back to Koppen classification mode
+ * @param {Object} thresholds - Koppen thresholds to apply
+ */
+export function switchToKoppenMode(thresholds = DEFAULT_THRESHOLDS) {
+  classificationMode = 'koppen';
+  customRulesEngine = null;
+  reclassify(thresholds);
+}
+
+/**
+ * Get current classification mode
+ * @returns {string} 'koppen' or 'custom'
+ */
+export function getClassificationMode() {
+  return classificationMode;
+}
+
+// Set up event listener for custom rules changes
+document.addEventListener('koppen:custom-rules-changed', (e) => {
+  const { engine } = e.detail || {};
+  if (engine) {
+    reclassifyWithCustomRules(engine);
+  }
+});
+
+// Listen for mode changes
+document.addEventListener('koppen:mode-changed', (e) => {
+  const { mode } = e.detail || {};
+  if (mode === 'koppen') {
+    classificationMode = 'koppen';
+    customRulesEngine = null;
+  }
+});
 
 export default {
   createClimateLayer,
+  createHybridClimateLayer,
   removeClimateLayer,
   filterByType,
   clearFilter,
   getActiveFilter,
   reclassify,
+  reclassifyWithCustomRules,
+  switchToKoppenMode,
+  getClassificationMode,
   getFeatures,
   getSelectedCell,
   deselectCell,

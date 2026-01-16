@@ -3,6 +3,16 @@
  * Provides inline glossary definitions for technical terms
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses GLOSSARY using term keys passed from internal components.
+ * Keys are not user-controlled; they are hardcoded in climate-info.js and similar.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
+/* eslint-disable sonarjs/no-duplicate-string --
+ * CSS class names for expandable terms are intentionally repeated for clarity.
+ */
+
 import { GLOSSARY } from '../climate/glossary.js';
 
 /**

@@ -3,6 +3,12 @@
  * @module builder/difference-highlighter
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file accesses climate classification data using keys from internal structures.
+ * Keys are not user-controlled; they come from CLIMATE_TYPES or comparison results.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import { CLIMATE_TYPES } from '../climate/koppen-rules.js';
 
 let state = {

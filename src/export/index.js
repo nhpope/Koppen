@@ -5,7 +5,8 @@
 
 import pngGenerator from './png-generator.js';
 import { generateFilename, downloadBlob } from './utils.js';
-import { exportJSON, importJSON, generateFilename as generateJSONFilename } from './json-export.js';  // Story 6.5
+import { exportJSON, importJSON } from './json-export.js';  // Story 6.5
+import logger from '../utils/logger.js';
 
 let exportButton = null;
 let includeLegendCheckbox = null;
@@ -24,7 +25,7 @@ async function handleExport() {
     // Show loading state
     exportButton.disabled = true;
     exportButton.classList.add('export-button--active');
-    const originalText = exportButton.textContent;
+    const _ORIGINAL_TEXT = exportButton.textContent;
     exportButton.textContent = 'Exporting...';
 
     document.dispatchEvent(new CustomEvent('koppen:export-started'));
@@ -35,7 +36,7 @@ async function handleExport() {
     // Generate PNG
     const { blob, duration } = await pngGenerator.generatePNG({
       includeLegend: includeLegendCheckbox?.checked ?? true,
-      includeWatermark: true
+      includeWatermark: true,
     });
 
     // Download
@@ -43,17 +44,17 @@ async function handleExport() {
     downloadBlob(blob, filename);
 
     // Success feedback
-    console.log(`[Koppen] Exported as ${filename}`);
+    logger.log(`[Koppen] Exported as ${filename}`);
 
     document.dispatchEvent(new CustomEvent('koppen:export-completed', {
-      detail: { filename, duration, size: blob.size }
+      detail: { filename, duration, size: blob.size },
     }));
 
   } catch (error) {
     console.error('[Koppen] Export failed:', error);
 
     document.dispatchEvent(new CustomEvent('koppen:export-failed', {
-      detail: { error: error.message }
+      detail: { error: error.message },
     }));
 
   } finally {
@@ -89,7 +90,7 @@ export default {
       exportButton.disabled = false;
     });
 
-    console.log('[Koppen] Export module initialized');
+    logger.log('[Koppen] Export module initialized');
   },
 
   /**
@@ -148,10 +149,10 @@ export default {
       const blob = new Blob([json], { type: 'application/json' });
       downloadBlob(blob, filename);
 
-      console.log(`[Koppen] Exported JSON: ${filename} (${size} bytes)`);
+      logger.log(`[Koppen] Exported JSON: ${filename} (${size} bytes)`);
 
       document.dispatchEvent(new CustomEvent('koppen:json-export-completed', {
-        detail: { filename, size }
+        detail: { filename, size },
       }));
 
       return { json, filename, size };
@@ -159,7 +160,7 @@ export default {
       console.error('[Koppen] JSON export failed:', error);
 
       document.dispatchEvent(new CustomEvent('koppen:json-export-failed', {
-        detail: { error: error.message }
+        detail: { error: error.message },
       }));
 
       throw error;
@@ -184,10 +185,10 @@ export default {
           // Use json-export module to parse and validate
           const classification = importJSON(json);
 
-          console.log('[Koppen] Imported classification:', classification.name);
+          logger.log('[Koppen] Imported classification:', classification.name);
 
           document.dispatchEvent(new CustomEvent('koppen:json-import-completed', {
-            detail: { name: classification.name, version: classification.version }
+            detail: { name: classification.name, version: classification.version },
           }));
 
           resolve(classification);
@@ -195,7 +196,7 @@ export default {
           console.error('[Koppen] JSON import failed:', error);
 
           document.dispatchEvent(new CustomEvent('koppen:json-import-failed', {
-            detail: { error: error.message }
+            detail: { error: error.message },
           }));
 
           reject(error);
@@ -207,7 +208,7 @@ export default {
         console.error('[Koppen] FileReader error:', error);
 
         document.dispatchEvent(new CustomEvent('koppen:json-import-failed', {
-          detail: { error: error.message }
+          detail: { error: error.message },
         }));
 
         reject(error);
@@ -224,6 +225,6 @@ export default {
     if (exportButton) {
       exportButton.removeEventListener('click', handleExport);
     }
-    console.log('[Koppen] Export module destroyed');
+    logger.log('[Koppen] Export module destroyed');
   },
 };

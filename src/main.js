@@ -3,7 +3,14 @@
  * Main Entry Point
  */
 
+/* eslint-disable security/detect-object-injection --
+ * This file coordinates module initialization using internal event handling.
+ * Keys are not user-controlled; they come from the app's internal event system.
+ * See docs/orchestration/checkpoints/security-review.md for full analysis.
+ */
+
 import './style.css';
+import logger from './utils/logger.js';
 
 // Module imports
 import MapModule from './map/index.js';
@@ -28,7 +35,7 @@ async function initializeApp() {
     return;
   }
 
-  console.log('[Koppen] Initializing application...');
+  logger.log('[Koppen] Initializing application...');
 
   try {
     // Initialize modules in order
@@ -61,7 +68,7 @@ async function initializeApp() {
     await restoreFromURL();
 
     app.initialized = true;
-    console.log('[Koppen] Application initialized successfully');
+    logger.log('[Koppen] Application initialized successfully');
 
     // Dispatch ready event
     document.dispatchEvent(new CustomEvent('koppen:ready'));
@@ -136,7 +143,7 @@ function setupEventListeners() {
 
   // Climate data loaded
   document.addEventListener('koppen:data-loaded', (e) => {
-    console.log(`[Koppen] Data loaded: ${e.detail.features} features`);
+    logger.log(`[Koppen] Data loaded: ${e.detail.features} features`);
     app.modules.climate.classify();
   });
 
@@ -226,7 +233,7 @@ async function initializeStateSync() {
   try {
     const { initStateSync } = await import('./utils/url-state.js');
     initStateSync();
-    console.log('[Koppen] URL state synchronization active');
+    logger.log('[Koppen] URL state synchronization active');
   } catch (error) {
     console.error('[Koppen] Failed to initialize state sync:', error);
   }
@@ -240,7 +247,7 @@ async function restoreFromURL() {
   const state = getStateFromURL();
 
   if (state) {
-    console.log('[Koppen] Restoring state from URL');
+    logger.log('[Koppen] Restoring state from URL');
 
     // Apply thresholds if present
     if (state.thresholds) {
@@ -284,7 +291,7 @@ async function restoreFromURL() {
               });
             });
 
-            console.log('[Koppen] Applied shared classification thresholds');
+            logger.log('[Koppen] Applied shared classification thresholds');
           }, 500);
         }
       }, 300);

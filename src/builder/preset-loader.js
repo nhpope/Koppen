@@ -8,6 +8,7 @@ import {
   validatePreset,
   getThresholdValues,
 } from '../climate/presets.js';
+import logger from '../utils/logger.js';
 
 let currentPreset = null;
 
@@ -26,7 +27,7 @@ export default {
       currentPreset.metadata.loaded_at = new Date().toISOString();
       currentPreset.metadata.source = 'preset';
 
-      console.log('[Koppen] Köppen preset loaded:', currentPreset.name);
+      logger.log('[Koppen] Köppen preset loaded:', currentPreset.name);
 
       // Fire event with preset data
       document.dispatchEvent(
@@ -35,7 +36,7 @@ export default {
             preset: currentPreset,
             thresholds: getThresholdValues(currentPreset),
           },
-        })
+        }),
       );
 
       return currentPreset;
@@ -45,7 +46,7 @@ export default {
       document.dispatchEvent(
         new CustomEvent('koppen:preset-load-error', {
           detail: { error: error.message },
-        })
+        }),
       );
 
       throw error;
@@ -74,7 +75,7 @@ export default {
   markModified() {
     if (currentPreset) {
       currentPreset.metadata.modified = true;
-      console.log('[Koppen] Preset marked as modified');
+      logger.log('[Koppen] Preset marked as modified');
     }
   },
 
@@ -83,7 +84,7 @@ export default {
    * @returns {Promise<Object>} Fresh preset data
    */
   resetToKoppen() {
-    console.log('[Koppen] Resetting to original Köppen values');
+    logger.log('[Koppen] Resetting to original Köppen values');
     return this.loadKoppenPreset();
   },
 
