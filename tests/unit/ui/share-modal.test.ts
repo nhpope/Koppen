@@ -22,6 +22,12 @@ vi.mock('../../../src/utils/logger.js', () => ({
   },
 }));
 
+// C.3: Mock confirm-dialog module
+const mockShowError = vi.fn();
+vi.mock('../../../src/ui/confirm-dialog.js', () => ({
+  showError: (...args: unknown[]) => mockShowError(...args),
+}));
+
 // Import module after mocks
 import {
   init,
@@ -236,20 +242,22 @@ describe('Share Modal Module (Story 6.3)', () => {
       expect(warning).toBeNull();
     });
 
-    it('should handle generateURL errors gracefully', () => {
+    it('should handle generateURL errors gracefully', async () => {
       vi.mocked(generateURL).mockImplementationOnce(() => {
         throw new Error('Encoding failed');
       });
 
-      const alertMock = vi.fn();
-      global.alert = alertMock;
+      mockShowError.mockResolvedValue(undefined);
 
       const eventListener = vi.fn();
       document.addEventListener('koppen:share-failed', eventListener);
 
-      open({ name: 'Test' });
+      await open({ name: 'Test' });
 
-      expect(alertMock).toHaveBeenCalledWith('Failed to generate share URL: Encoding failed');
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Failed to generate share URL: Encoding failed',
+        { title: 'Share Error' }
+      );
       expect(eventListener).toHaveBeenCalled();
       expect(isModalOpen()).toBe(false);
 

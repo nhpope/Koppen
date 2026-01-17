@@ -17,6 +17,7 @@ import { CustomRulesEngine } from '../climate/custom-rules.js';  // Custom rules
 import CategoryManager from './category-manager.js';  // Custom rules UI
 import logger from '../utils/logger.js';
 import { getFeatures as getClimateFeatures } from '../map/climate-layer.js';  // Static import to avoid dynamic import warning
+import { showError, showConfirm } from '../ui/confirm-dialog.js';  // C.3: Replace native alert/confirm
 
 let builderPanel = null;
 let isOpen = false;
@@ -548,7 +549,7 @@ function createCustomRulesExportSection() {
   exportBtn.appendChild(exportIcon);
   exportBtn.appendChild(document.createTextNode(' Export Rules'));
 
-  exportBtn.addEventListener('click', () => {
+  exportBtn.addEventListener('click', async () => {
     try {
       if (!customRulesEngine) return;
 
@@ -578,7 +579,7 @@ function createCustomRulesExportSection() {
 
     } catch (error) {
       console.error('[Koppen] Export failed:', error);
-      alert(`Export failed: ${error.message}`);
+      await showError(`Export failed: ${error.message}`, { title: 'Export Error' });
     }
   });
 
@@ -655,7 +656,7 @@ function createCustomRulesExportSection() {
 
     } catch (error) {
       console.error('[Koppen] Import failed:', error);
-      alert(`Import failed: ${error.message}`);
+      await showError(`Import failed: ${error.message}`, { title: 'Import Error' });
       importBtn.innerHTML = '';
       const icon = document.createElement('span');
       icon.textContent = '\uD83D\uDCE4';
@@ -686,8 +687,12 @@ function createSwitchToKoppenSection() {
   button.type = 'button';
   button.className = 'builder-panel__reset-to-koppen';
   button.textContent = 'Switch to Koppen Mode';
-  button.addEventListener('click', () => {
-    if (confirm('Switch to Koppen mode? This will discard your custom categories and rules.')) {
+  button.addEventListener('click', async () => {
+    const confirmed = await showConfirm(
+      'Switch to Koppen mode? This will discard your custom categories and rules.',
+      { title: 'Switch Mode', type: 'warning' }
+    );
+    if (confirmed) {
       // Clean up custom rules
       if (categoryManager) {
         categoryManager.destroy();
@@ -702,58 +707,6 @@ function createSwitchToKoppenSection() {
       }));
 
       // Start Koppen mode
-      startFromKoppen();
-    }
-  });
-
-  section.appendChild(button);
-
-  return section;
-}
-
-/**
- * Create help message for scratch mode (Story 4.6)
- * Reserved for future scratch mode implementation
- * @returns {HTMLElement} Help message element
- */
-// eslint-disable-next-line no-unused-vars -- Reserved for future scratch mode UI
-function createHelpMessage() {
-  const help = document.createElement('div');
-  help.className = 'builder-panel__help';
-  help.setAttribute('role', 'status');
-  help.setAttribute('aria-live', 'polite');
-
-  const icon = document.createElement('span');
-  icon.className = 'builder-panel__help-icon';
-  icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '💡';
-
-  const text = document.createElement('p');
-  text.className = 'builder-panel__help-text';
-  text.textContent = 'Define thresholds to classify regions. Adjust sliders below to see regions change classification in real-time.';
-
-  help.appendChild(icon);
-  help.appendChild(text);
-
-  return help;
-}
-
-/**
- * Create reset section with button to switch to Köppen (Story 4.6)
- * Reserved for future scratch mode implementation
- * @returns {HTMLElement} Reset section element
- */
-// eslint-disable-next-line no-unused-vars -- Reserved for future scratch mode UI
-function createResetSection() {
-  const section = document.createElement('div');
-  section.className = 'builder-panel__reset-section';
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'builder-panel__reset-to-koppen';
-  button.textContent = 'Switch to Köppen Preset';
-  button.addEventListener('click', () => {
-    if (confirm('Switch to Köppen preset? This will replace your current thresholds.')) {
       startFromKoppen();
     }
   });
@@ -813,7 +766,7 @@ function createExportSection() {
       }, 2000);
     } catch (error) {
       console.error('[Koppen] Export failed:', error);
-      alert(`Export failed: ${error.message}`);
+      await showError(`Export failed: ${error.message}`, { title: 'Export Error' });
     }
   });
 
@@ -883,7 +836,7 @@ function createExportSection() {
       }));
     } catch (error) {
       console.error('[Koppen] Import failed:', error);
-      alert(`Import failed: ${error.message}`);
+      await showError(`Import failed: ${error.message}`, { title: 'Import Error' });
 
       importBtn.textContent = '';
       const icon = document.createElement('span');
@@ -927,7 +880,11 @@ function createPresetAttribution(preset) {
   reset.className = 'builder-panel__reset-btn';
   reset.textContent = 'Reset to Original';
   reset.addEventListener('click', async () => {
-    if (confirm('Reset all thresholds to Köppen defaults?')) {
+    const confirmed = await showConfirm(
+      'Reset all thresholds to Köppen defaults?',
+      { title: 'Reset Thresholds', type: 'warning' }
+    );
+    if (confirmed) {
       const freshPreset = await presetLoader.resetToKoppen();
       thresholdSliders.reset(freshPreset);
     }

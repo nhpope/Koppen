@@ -11,6 +11,7 @@
 import { DEFAULT_COLORS } from '../climate/custom-rules.js';
 import RuleEditor from './rule-editor.js';
 import logger from '../utils/logger.js';
+import { showConfirm } from '../ui/confirm-dialog.js';
 
 /**
  * Category Manager - Manages the list of climate categories
@@ -426,11 +427,14 @@ class CategoryManager {
    * Handle deleting a category
    * @param {string} categoryId - Category ID
    */
-  handleDeleteCategory(categoryId) {
+  async handleDeleteCategory(categoryId) {
     const category = this.engine.getCategory(categoryId);
     if (!category) return;
 
-    const confirmed = confirm(`Delete "${category.name}"? This cannot be undone.`);
+    const confirmed = await showConfirm(
+      `Delete "${category.name}"? This cannot be undone.`,
+      { title: 'Delete Category', type: 'warning' }
+    );
     if (!confirmed) return;
 
     this.engine.removeCategory(categoryId);

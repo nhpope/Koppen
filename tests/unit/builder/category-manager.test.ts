@@ -24,6 +24,12 @@ vi.mock('../../../src/climate/custom-rules.js', () => ({
   DEFAULT_COLORS: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'],
 }));
 
+// C.3: Mock confirm-dialog module
+const mockShowConfirm = vi.fn();
+vi.mock('../../../src/ui/confirm-dialog.js', () => ({
+  showConfirm: (...args: unknown[]) => mockShowConfirm(...args),
+}));
+
 import CategoryManager from '../../../src/builder/category-manager.js';
 
 // Polyfill DragEvent for jsdom
@@ -184,32 +190,40 @@ describe('CategoryManager', () => {
         { id: 'cat1', name: 'Category 1', color: '#FF0000', enabled: true, rules: [] },
       ]);
       mockEngine.getCategory.mockReturnValue({ id: 'cat1', name: 'Category 1', color: '#FF0000', enabled: true, rules: [] });
+      mockShowConfirm.mockReset();
     });
 
-    it('should delete category when confirmed', () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
+    it('should delete category when confirmed', async () => {
+      mockShowConfirm.mockResolvedValue(true);
 
       new CategoryManager(container, mockEngine, onUpdate);
 
       const deleteBtn = container.querySelector('.category-item__delete-btn') as HTMLButtonElement;
       deleteBtn.click();
 
-      expect(mockEngine.removeCategory).toHaveBeenCalledWith('cat1');
+      // Wait for async confirm dialog
+      await vi.waitFor(() => {
+        expect(mockEngine.removeCategory).toHaveBeenCalledWith('cat1');
+      });
       expect(onUpdate).toHaveBeenCalled();
     });
 
-    it('should NOT delete category when not confirmed', () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
+    it('should NOT delete category when not confirmed', async () => {
+      mockShowConfirm.mockResolvedValue(false);
 
       new CategoryManager(container, mockEngine, onUpdate);
 
       const deleteBtn = container.querySelector('.category-item__delete-btn') as HTMLButtonElement;
       deleteBtn.click();
 
+      // Wait for async confirm dialog to resolve
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
       expect(mockEngine.removeCategory).not.toHaveBeenCalled();
     });
 
-    it('should handle delete when category not found', () => {
+    it('should handle delete when category not found', async () => {
       mockEngine.getCategory.mockReturnValue(null);
 
       new CategoryManager(container, mockEngine, onUpdate);
@@ -774,20 +788,20 @@ describe('CategoryManager', () => {
   });
 
   describe('Delete Expanded Category', () => {
-    it('should clear expanded state when deleting expanded category', () => {
+    it('should clear expanded state when deleting expanded category', async () => {
       mockEngine.getSortedCategories.mockReturnValue([
         { id: 'cat1', name: 'Category 1', color: '#FF0000', enabled: true, rules: [] },
       ]);
       mockEngine.getCategory.mockReturnValue({ id: 'cat1', name: 'Category 1', color: '#FF0000', enabled: true, rules: [] });
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      mockShowConfirm.mockResolvedValue(true);
 
       const manager = new CategoryManager(container, mockEngine, onUpdate);
 
       // Expand the category
       manager['expandedCategoryId'] = 'cat1';
 
-      // Delete it
-      manager['handleDeleteCategory']('cat1');
+      // Delete it (now async)
+      await manager['handleDeleteCategory']('cat1');
 
       expect(manager['expandedCategoryId']).toBeNull();
     });

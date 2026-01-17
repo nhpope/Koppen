@@ -6,6 +6,7 @@
 
 import builder from '../builder/index.js';  // Story 6.6
 import logger from '../utils/logger.js';
+import { showError } from './confirm-dialog.js';  // C.3: Replace native alert
 
 let infoBar = null;
 let isVisible = false;
@@ -63,10 +64,22 @@ function renderContent(classificationName) {
   icon.setAttribute('aria-hidden', 'true');
   icon.textContent = '🔗';
 
-  // Text
-  const text = document.createElement('span');
-  text.className = 'shared-info-bar__text';
-  text.textContent = `Viewing: ${safeName} by Anonymous`;
+  // Text container with primary and secondary messages (B.4 improvement)
+  const textContainer = document.createElement('span');
+  textContainer.className = 'shared-info-bar__text';
+
+  // Primary message - clearly indicates this is a modified system
+  const primaryText = document.createElement('span');
+  primaryText.className = 'shared-info-bar__text-primary';
+  primaryText.textContent = `Viewing shared classification: "${safeName}"`;
+
+  // Secondary message - explains what "modified" means
+  const secondaryText = document.createElement('span');
+  secondaryText.className = 'shared-info-bar__text-secondary';
+  secondaryText.textContent = '— this is a modified Köppen classification system';
+
+  textContainer.appendChild(primaryText);
+  textContainer.appendChild(secondaryText);
 
   // View Differences button (B.4 improvement)
   const diffBtn = document.createElement('button');
@@ -102,7 +115,7 @@ function renderContent(classificationName) {
 
   // Assemble
   infoBar.appendChild(icon);
-  infoBar.appendChild(text);
+  infoBar.appendChild(textContainer);
   infoBar.appendChild(diffBtn);
   infoBar.appendChild(forkBtn);
   infoBar.appendChild(closeBtn);
@@ -148,7 +161,7 @@ async function handleFork(forkBtn) {
     forkBtn.textContent = 'Create Your Own Version';
 
     // Show error
-    alert(`Failed to create your own version: ${error.message}`);
+    await showError(`Failed to create your own version: ${error.message}`, { title: 'Fork Error' });
   }
 }
 

@@ -6,6 +6,7 @@
 
 import { generateURL } from '../export/url-encoder.js';
 import logger from '../utils/logger.js';
+import { showError } from './confirm-dialog.js';  // C.3: Replace native alert
 
 let modalElement = null;
 let isOpen = false;
@@ -220,7 +221,7 @@ function showCopyError() {
  * @param {string} state.name - Classification name
  * @param {Object} state.thresholds - Threshold values
  */
-export function open(state) {
+export async function open(state) {
   if (isOpen) return;
 
   try {
@@ -256,7 +257,7 @@ export function open(state) {
     console.error('[Koppen] Failed to open share modal:', error);
 
     // Show error to user
-    alert(`Failed to generate share URL: ${error.message}`);
+    await showError(`Failed to generate share URL: ${error.message}`, { title: 'Share Error' });
 
     // Fire error event
     document.dispatchEvent(new CustomEvent('koppen:share-failed', {
