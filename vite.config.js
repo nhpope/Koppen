@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/koppen/',
+  base: '/',
   build: {
     outDir: 'dist',
     sourcemap: false, // Disabled for production security (prevent source code exposure)
