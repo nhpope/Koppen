@@ -52,6 +52,7 @@ function generateId() {
 /**
  * Minify custom rules for URL encoding
  * Uses single-letter keys to reduce size before compression
+ * Uses array indices for parent-child relationships instead of IDs
  * @param {Object} customRules - Custom rules engine JSON (from toJSON())
  * @returns {Object} Minified rules object
  */
@@ -59,6 +60,12 @@ function minifyCustomRules(customRules) {
   if (!customRules || !customRules.categories) {
     return null;
   }
+
+  // Build ID to index map for parent references
+  const idToIndex = new Map();
+  customRules.categories.forEach((cat, idx) => {
+    idToIndex.set(cat.id, idx);
+  });
 
   return {
     c: customRules.categories.map(cat => {
@@ -71,7 +78,14 @@ function minifyCustomRules(customRules) {
       if (cat.description) minCat.d = cat.description;
       if (cat.priority !== 0 && cat.priority !== undefined) minCat.p = cat.priority;
       if (cat.enabled === false) minCat.e = false;
-      if (cat.parentId) minCat.x = cat.parentId;
+
+      // Store parent index instead of ID
+      if (cat.parentId) {
+        const parentIndex = idToIndex.get(cat.parentId);
+        if (parentIndex !== undefined) {
+          minCat.x = parentIndex;  // x = parent index
+        }
+      }
 
       // Minify rules
       if (cat.rules && cat.rules.length > 0) {
@@ -103,6 +117,7 @@ function minifyCustomRules(customRules) {
 
 /**
  * Expand minified custom rules back to full format
+ * Rebuilds parent-child relationships using array indices
  * @param {Object} minified - Minified rules from URL
  * @returns {Object} Full custom rules JSON for CustomRulesEngine.fromJSON()
  */
@@ -111,25 +126,41 @@ function expandCustomRules(minified) {
     return null;
   }
 
+  // First pass: Create categories with new IDs
+  const categories = minified.c.map(minCat => ({
+    id: generateId(),
+    name: minCat.n || 'Unnamed',
+    color: minCat.o || '#888888',
+    description: minCat.d || '',
+    priority: minCat.p ?? 0,
+    enabled: minCat.e !== false,
+    parentId: null,  // Will be set in second pass
+    children: [],    // Will be set in second pass
+    rules: (minCat.r || []).map(minRule => ({
+      id: generateId(),
+      parameter: minRule.a,
+      operator: minRule.b,
+      value: minRule.v,
+    })),
+  }));
+
+  // Second pass: Rebuild parent-child relationships using indices
+  minified.c.forEach((minCat, idx) => {
+    if (minCat.x !== undefined && minCat.x !== null) {
+      const parentIndex = minCat.x;
+      if (parentIndex >= 0 && parentIndex < categories.length) {
+        // Set parentId to the new ID of the parent
+        categories[idx].parentId = categories[parentIndex].id;
+        // Add this category to parent's children array
+        categories[parentIndex].children.push(categories[idx].id);
+      }
+    }
+  });
+
   return {
     version: '1.0.0',
     type: 'custom-rules',
-    categories: minified.c.map(minCat => ({
-      id: generateId(),
-      name: minCat.n || 'Unnamed',
-      color: minCat.o || '#888888',
-      description: minCat.d || '',
-      priority: minCat.p ?? 0,
-      enabled: minCat.e !== false,
-      parentId: minCat.x || null,
-      children: [],
-      rules: (minCat.r || []).map(minRule => ({
-        id: generateId(),
-        parameter: minRule.a,
-        operator: minRule.b,
-        value: minRule.v,
-      })),
-    })),
+    categories,
 
     // Expand custom parameters if present
     ...(minified.q ? {
