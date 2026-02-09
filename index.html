@@ -8,6 +8,43 @@
     <meta name="keywords" content="Köppen, climate, classification, geography, map, interactive" />
     <meta name="author" content="NPope97" />
     <title>Koppen - Interactive Climate Classification Explorer</title>
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Köppen Climate Classification" />
+    <meta property="og:title" content="Köppen Climate Classification Explorer" />
+    <meta property="og:description" content="Interactive climate classification explorer. Create, compare, and share custom classification systems." />
+    <meta property="og:image" content="https://koppen.io/api/og" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://koppen.io" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Köppen Climate Classification Explorer" />
+    <meta name="twitter:description" content="Interactive climate classification explorer. Create and share custom classification systems." />
+    <meta name="twitter:image" content="https://koppen.io/api/og" />
+
+    <!-- Dynamic OG tags injection -->
+    <script>
+      // Inject dynamic OG image URL based on share parameter
+      (function() {
+        const params = new URLSearchParams(window.location.search);
+        const stateParam = params.get('s');
+
+        if (stateParam) {
+          const ogImageUrl = 'https://koppen.io/api/og?s=' + encodeURIComponent(stateParam);
+          const currentUrl = window.location.href;
+
+          // Update OG image
+          document.querySelector('meta[property="og:image"]')?.setAttribute('content', ogImageUrl);
+          document.querySelector('meta[name="twitter:image"]')?.setAttribute('content', ogImageUrl);
+
+          // Update OG URL
+          document.querySelector('meta[property="og:url"]')?.setAttribute('content', currentUrl);
+        }
+      })();
+    </script>
   </head>
   <body>
     <a href="#map-container" class="skip-link">Skip to main content</a>
