@@ -315,6 +315,302 @@ export const PARAMETERS = {
 };
 
 /**
+ * Safe formula evaluator for custom derived quantities
+ * Supports: +, -, *, /, parentheses, and built-in parameters
+ */
+export class FormulaEvaluator {
+  /**
+   * Create a formula evaluator
+   * @param {string} formula - Formula string (e.g., "Tmax - Tmin")
+   * @param {Object} customParams - Map of custom parameter IDs to their formulas
+   */
+  constructor(formula, customParams = {}) {
+    this.formula = formula;
+    this.customParams = customParams;
+    this.tokens = this.tokenize(formula);
+  }
+
+  /**
+   * Supported functions
+   */
+  static FUNCTIONS = {
+    abs: Math.abs,
+    min: Math.min,
+    max: Math.max,
+  };
+
+  /**
+   * Tokenize a formula string
+   * @param {string} formula - Formula to tokenize
+   * @returns {string[]} Array of tokens
+   */
+  tokenize(formula) {
+    // Match: numbers, parameter/function names (alphanumeric + underscore), operators, parentheses, commas
+    const tokenRegex = /(\d+\.?\d*|[A-Za-z_][A-Za-z0-9_]*|[+\-*/(),])/g;
+    return formula.match(tokenRegex) || [];
+  }
+
+  /**
+   * Evaluate the formula with given feature properties
+   * @param {Object} props - Feature properties
+   * @param {Set} visited - Set of parameter IDs being evaluated (for cycle detection)
+   * @returns {number} Computed value
+   */
+  evaluate(props, visited = new Set()) {
+    const values = {};
+
+    // Get values for all parameters referenced in the formula
+    for (const token of this.tokens) {
+      if (/^[A-Za-z_]/.test(token) && !values.hasOwnProperty(token)) {
+        // Check for circular reference
+        if (visited.has(token)) {
+          console.warn(`[FormulaEvaluator] Circular reference detected: ${token}`);
+          return NaN;
+        }
+
+        // Check if it's a built-in parameter
+        if (PARAMETERS[token]) {
+          values[token] = PARAMETERS[token].compute(props);
+        }
+        // Check if it's a custom parameter
+        else if (this.customParams[token]) {
+          const customParam = this.customParams[token];
+          const newVisited = new Set(visited);
+          newVisited.add(token);
+          const evaluator = new FormulaEvaluator(customParam.formula, this.customParams);
+          values[token] = evaluator.evaluate(props, newVisited);
+        }
+        // Unknown parameter
+        else {
+          console.warn(`[FormulaEvaluator] Unknown parameter: ${token}`);
+          values[token] = 0;
+        }
+      }
+    }
+
+    // Evaluate the expression
+    return this.evaluateExpression(this.tokens, values);
+  }
+
+  /**
+   * Evaluate a tokenized expression (simple recursive descent parser)
+   * @param {string[]} tokens - Tokens to evaluate
+   * @param {Object} values - Map of parameter names to values
+   * @returns {number} Result
+   */
+  evaluateExpression(tokens, values) {
+    let pos = 0;
+
+    const parseNumber = () => {
+      const token = tokens[pos];
+      if (!token) return 0;
+
+      // Check if it's a number
+      if (/^\d/.test(token)) {
+        pos++;
+        return parseFloat(token);
+      }
+      // Check if it's a function call (identifier followed by '(')
+      if (/^[A-Za-z_]/.test(token) && tokens[pos + 1] === '(') {
+        const funcName = token.toLowerCase();
+        const func = FormulaEvaluator.FUNCTIONS[funcName];
+        if (func) {
+          pos += 2; // skip function name and '('
+          const args = [];
+          // Parse arguments
+          while (tokens[pos] && tokens[pos] !== ')') {
+            args.push(parseAddSub());
+            if (tokens[pos] === ',') pos++; // skip comma
+          }
+          if (tokens[pos] === ')') pos++; // skip ')'
+          return func(...args);
+        }
+      }
+      // Check if it's a parameter
+      if (/^[A-Za-z_]/.test(token)) {
+        pos++;
+        return values[token] ?? 0;
+      }
+      // Check for parentheses
+      if (token === '(') {
+        pos++; // skip '('
+        const result = parseAddSub();
+        if (tokens[pos] === ')') pos++; // skip ')'
+        return result;
+      }
+      // Check for unary minus
+      if (token === '-') {
+        pos++;
+        return -parseNumber();
+      }
+
+      return 0;
+    };
+
+    const parseMulDiv = () => {
+      let left = parseNumber();
+      while (tokens[pos] === '*' || tokens[pos] === '/') {
+        const op = tokens[pos++];
+        const right = parseNumber();
+        if (op === '*') {
+          left *= right;
+        } else {
+          left = right !== 0 ? left / right : 0; // Avoid division by zero
+        }
+      }
+      return left;
+    };
+
+    const parseAddSub = () => {
+      let left = parseMulDiv();
+      while (tokens[pos] === '+' || tokens[pos] === '-') {
+        const op = tokens[pos++];
+        const right = parseMulDiv();
+        if (op === '+') {
+          left += right;
+        } else {
+          left -= right;
+        }
+      }
+      return left;
+    };
+
+    return parseAddSub();
+  }
+
+  /**
+   * Validate a formula
+   * @param {string} formula - Formula to validate
+   * @param {Object} customParams - Existing custom parameters
+   * @returns {Object} { valid: boolean, error?: string }
+   */
+  static validate(formula, customParams = {}) {
+    if (!formula || typeof formula !== 'string') {
+      return { valid: false, error: 'Formula is required' };
+    }
+
+    const trimmed = formula.trim();
+    if (trimmed.length === 0) {
+      return { valid: false, error: 'Formula cannot be empty' };
+    }
+
+    // Check for balanced parentheses
+    let parenCount = 0;
+    for (const char of trimmed) {
+      if (char === '(') parenCount++;
+      if (char === ')') parenCount--;
+      if (parenCount < 0) {
+        return { valid: false, error: 'Unbalanced parentheses' };
+      }
+    }
+    if (parenCount !== 0) {
+      return { valid: false, error: 'Unbalanced parentheses' };
+    }
+
+    // Tokenize and check for valid tokens
+    const tokenRegex = /(\d+\.?\d*|[A-Za-z_][A-Za-z0-9_]*|[+\-*/()])/g;
+    const tokens = trimmed.match(tokenRegex) || [];
+    const reconstructed = tokens.join('');
+
+    // Check that tokenization captures the whole formula (no invalid characters)
+    const cleanFormula = trimmed.replace(/\s+/g, '');
+    if (reconstructed !== cleanFormula) {
+      return { valid: false, error: 'Formula contains invalid characters' };
+    }
+
+    // Check that all identifiers are valid parameters or functions
+    for (const token of tokens) {
+      if (/^[A-Za-z_]/.test(token)) {
+        const isBuiltinParam = !!PARAMETERS[token];
+        const isCustomParam = !!customParams[token];
+        const isFunction = !!FormulaEvaluator.FUNCTIONS[token.toLowerCase()];
+        if (!isBuiltinParam && !isCustomParam && !isFunction) {
+          return { valid: false, error: `Unknown parameter: ${token}` };
+        }
+      }
+    }
+
+    // Try to evaluate with dummy values
+    try {
+      const evaluator = new FormulaEvaluator(formula, customParams);
+      const dummyProps = { mat: 15, tmin: 5, tmax: 25, map: 1000 };
+      const result = evaluator.evaluate(dummyProps);
+      if (isNaN(result) || !isFinite(result)) {
+        return { valid: false, error: 'Formula produces invalid result' };
+      }
+    } catch (e) {
+      return { valid: false, error: `Evaluation error: ${e.message}` };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Get list of parameters referenced in a formula
+   * @param {string} formula - Formula to analyze
+   * @returns {string[]} Array of parameter IDs
+   */
+  static getReferencedParameters(formula) {
+    const tokenRegex = /[A-Za-z_][A-Za-z0-9_]*/g;
+    const matches = formula.match(tokenRegex) || [];
+    return [...new Set(matches)];
+  }
+
+  /**
+   * Get the first parameter referenced in a formula (for unit inference)
+   * @param {string} formula - Formula to analyze
+   * @returns {string|null} First parameter ID or null
+   */
+  static getFirstParameter(formula) {
+    const tokenRegex = /[A-Za-z_][A-Za-z0-9_]*/g;
+    const match = formula.match(tokenRegex);
+    return match ? match[0] : null;
+  }
+
+  /**
+   * Infer unit from formula based on structure and parameters
+   * @param {string} formula - Formula to analyze
+   * @param {Object} customParams - Custom parameters map
+   * @returns {string} Inferred unit
+   */
+  static inferUnit(formula, customParams = {}) {
+    const refs = FormulaEvaluator.getReferencedParameters(formula);
+    if (refs.length === 0) return '';
+
+    // Get units of all referenced parameters
+    const units = new Set();
+    for (const ref of refs) {
+      let unit = '';
+      if (PARAMETERS[ref]) {
+        unit = PARAMETERS[ref].unit || '';
+      } else if (customParams[ref]) {
+        unit = FormulaEvaluator.inferUnit(customParams[ref].formula, customParams);
+      }
+      if (unit) units.add(unit);
+    }
+
+    // If formula contains division and all parameters have the same unit,
+    // the result is likely a ratio (unitless)
+    if (formula.includes('/') && units.size === 1) {
+      return ''; // Ratio - unitless
+    }
+
+    // Otherwise, use the first parameter's unit
+    const firstParam = FormulaEvaluator.getFirstParameter(formula);
+    if (!firstParam) return '';
+
+    if (PARAMETERS[firstParam]) {
+      return PARAMETERS[firstParam].unit || '';
+    }
+    if (customParams[firstParam]) {
+      return FormulaEvaluator.inferUnit(customParams[firstParam].formula, customParams);
+    }
+
+    return '';
+  }
+}
+
+/**
  * Default colors for new categories
  */
 export const DEFAULT_COLORS = [
@@ -337,8 +633,9 @@ export class CustomRulesEngine {
   /**
    * Create a new CustomRulesEngine
    * @param {Object[]} categories - Initial categories
+   * @param {Object[]} customParameters - Initial custom parameters
    */
-  constructor(categories = []) {
+  constructor(categories = [], customParameters = []) {
     this.categories = categories.map(cat => ({
       id: cat.id || generateId(),
       name: cat.name || 'Untitled Category',
@@ -346,6 +643,8 @@ export class CustomRulesEngine {
       description: cat.description || '',
       priority: cat.priority ?? 0,
       enabled: cat.enabled !== false,
+      parentId: cat.parentId ?? null,  // null for top-level categories
+      children: cat.children ?? [],     // Array of child category IDs
       rules: (cat.rules || []).map(rule => ({
         id: rule.id || generateId(),
         parameter: rule.parameter || 'MAT',
@@ -354,6 +653,20 @@ export class CustomRulesEngine {
         unit: rule.unit || PARAMETERS[rule.parameter]?.unit || '',
       })),
     }));
+
+    // Initialize custom parameters
+    this.customParameters = {};
+    (customParameters || []).forEach(param => {
+      this.customParameters[param.id] = {
+        id: param.id,
+        name: param.name || param.id,
+        formula: param.formula,
+        unit: param.unit || '',
+        description: param.description || '',
+        range: param.range || [-1000, 1000],
+        step: param.step || 1,
+      };
+    });
 
     // Sort by priority first (for imported data), then ensure priorities are sequential
     this.categories.sort((a, b) => a.priority - b.priority);
@@ -387,18 +700,247 @@ export class CustomRulesEngine {
   }
 
   /**
+   * Get top-level categories (categories without a parent)
+   * @returns {Object[]} Top-level categories sorted by priority
+   */
+  getTopLevelCategories() {
+    return this.categories
+      .filter(cat => cat.parentId === null)
+      .sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
+   * Get child categories of a specific parent
+   * @param {string} parentId - Parent category ID
+   * @returns {Object[]} Child categories sorted by priority
+   */
+  getChildCategories(parentId) {
+    return this.categories
+      .filter(cat => cat.parentId === parentId)
+      .sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
+   * Check if a category has children
+   * @param {string} categoryId - Category ID
+   * @returns {boolean} Whether the category has children
+   */
+  hasChildren(categoryId) {
+    return this.categories.some(cat => cat.parentId === categoryId);
+  }
+
+  /**
+   * Check if a category is a child (has a parent)
+   * @param {string} categoryId - Category ID
+   * @returns {boolean} Whether the category is a child
+   */
+  isChildCategory(categoryId) {
+    const category = this.getCategory(categoryId);
+    return category ? category.parentId !== null : false;
+  }
+
+  /**
+   * Get the parent category of a child
+   * @param {string} categoryId - Child category ID
+   * @returns {Object|null} Parent category or null
+   */
+  getParentCategory(categoryId) {
+    const category = this.getCategory(categoryId);
+    if (!category || !category.parentId) return null;
+    return this.getCategory(category.parentId);
+  }
+
+  /**
    * Get the computed value of a parameter for a feature
+   * Checks built-in parameters first, then custom parameters
    * @param {string} parameterId - Parameter ID
    * @param {Object} props - Feature properties
    * @returns {number} Computed value
    */
   getParameterValue(parameterId, props) {
-    const param = PARAMETERS[parameterId];
-    if (!param) {
-      console.warn(`[CustomRules] Unknown parameter: ${parameterId}`);
-      return 0;
+    // Check built-in parameters first
+    const builtinParam = PARAMETERS[parameterId];
+    if (builtinParam) {
+      return builtinParam.compute(props);
     }
-    return param.compute(props);
+
+    // Check custom parameters
+    const customParam = this.customParameters[parameterId];
+    if (customParam) {
+      const evaluator = new FormulaEvaluator(customParam.formula, this.customParameters);
+      return evaluator.evaluate(props);
+    }
+
+    console.warn(`[CustomRules] Unknown parameter: ${parameterId}`);
+    return 0;
+  }
+
+  // ============================================
+  // Custom Parameter Management
+  // ============================================
+
+  /**
+   * Add a custom derived parameter
+   * @param {Object} param - Parameter data
+   * @returns {Object} The created parameter
+   */
+  addCustomParameter(param = {}) {
+    const id = param.id || generateId();
+    const formula = param.formula || 'MAT';
+
+    // Validate formula before adding
+    const validation = FormulaEvaluator.validate(formula, this.customParameters);
+    if (!validation.valid) {
+      throw new Error(`Invalid formula: ${validation.error}`);
+    }
+
+    // Auto-infer unit from first parameter in formula
+    const inferredUnit = FormulaEvaluator.inferUnit(formula, this.customParameters);
+
+    const newParam = {
+      id,
+      name: param.name || `Custom Parameter ${Object.keys(this.customParameters).length + 1}`,
+      formula,
+      unit: inferredUnit,
+      description: param.description || '',
+      range: param.range || [-1000, 1000],
+      step: param.step || 1,
+    };
+
+    this.customParameters[id] = newParam;
+
+    // Dispatch event
+    document.dispatchEvent(new CustomEvent('koppen:custom-parameter-added', {
+      detail: { parameter: newParam },
+    }));
+
+    return newParam;
+  }
+
+  /**
+   * Update a custom parameter
+   * @param {string} paramId - Parameter ID
+   * @param {Object} updates - Fields to update
+   * @returns {Object|null} Updated parameter or null if not found
+   */
+  updateCustomParameter(paramId, updates) {
+    const param = this.customParameters[paramId];
+    if (!param) return null;
+
+    // If updating formula, validate it first
+    if (updates.formula !== undefined) {
+      // Create a temporary customParams without this param to avoid self-reference
+      const tempParams = { ...this.customParameters };
+      delete tempParams[paramId];
+
+      const validation = FormulaEvaluator.validate(updates.formula, tempParams);
+      if (!validation.valid) {
+        throw new Error(`Invalid formula: ${validation.error}`);
+      }
+    }
+
+    // Apply updates (unit is auto-inferred, not user-settable)
+    const allowedFields = ['name', 'formula', 'description', 'range', 'step'];
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        param[field] = updates[field];
+      }
+    }
+
+    // Auto-update unit if formula changed
+    if (updates.formula !== undefined) {
+      const tempParams = { ...this.customParameters };
+      delete tempParams[paramId];
+      param.unit = FormulaEvaluator.inferUnit(updates.formula, tempParams);
+    }
+
+    // Dispatch event
+    document.dispatchEvent(new CustomEvent('koppen:custom-parameter-updated', {
+      detail: { paramId, updates },
+    }));
+
+    return param;
+  }
+
+  /**
+   * Remove a custom parameter
+   * @param {string} paramId - Parameter ID
+   * @returns {boolean} Whether the parameter was removed
+   */
+  removeCustomParameter(paramId) {
+    if (!this.customParameters[paramId]) return false;
+
+    // Check if any rules use this parameter
+    for (const category of this.categories) {
+      for (const rule of category.rules) {
+        if (rule.parameter === paramId) {
+          throw new Error(`Cannot remove parameter "${paramId}": it is used by rule in category "${category.name}"`);
+        }
+      }
+    }
+
+    // Check if any other custom parameters reference this one
+    for (const [id, param] of Object.entries(this.customParameters)) {
+      if (id !== paramId) {
+        const refs = FormulaEvaluator.getReferencedParameters(param.formula);
+        if (refs.includes(paramId)) {
+          throw new Error(`Cannot remove parameter "${paramId}": it is referenced by custom parameter "${param.name}"`);
+        }
+      }
+    }
+
+    delete this.customParameters[paramId];
+
+    // Dispatch event
+    document.dispatchEvent(new CustomEvent('koppen:custom-parameter-removed', {
+      detail: { paramId },
+    }));
+
+    return true;
+  }
+
+  /**
+   * Get a custom parameter by ID
+   * @param {string} paramId - Parameter ID
+   * @returns {Object|null} Parameter or null
+   */
+  getCustomParameter(paramId) {
+    return this.customParameters[paramId] || null;
+  }
+
+  /**
+   * Get all custom parameters
+   * @returns {Object[]} Array of custom parameters
+   */
+  getAllCustomParameters() {
+    return Object.values(this.customParameters);
+  }
+
+  /**
+   * Get all available parameters (built-in + custom)
+   * @returns {Object} Map of all parameters
+   */
+  getAllParameters() {
+    const allParams = { ...PARAMETERS };
+
+    // Add custom parameters with compute function
+    for (const [id, param] of Object.entries(this.customParameters)) {
+      allParams[id] = {
+        id,
+        label: param.name,
+        shortLabel: param.name,
+        unit: param.unit,
+        category: 'custom',
+        compute: (props) => this.getParameterValue(id, props),
+        range: param.range,
+        step: param.step,
+        isCustom: true,
+        formula: param.formula,
+        description: param.description,
+      };
+    }
+
+    return allParams;
   }
 
   /**
@@ -430,15 +972,16 @@ export class CustomRulesEngine {
   }
 
   /**
-   * Classify a single feature
+   * Classify a single feature (two-pass: parent first, then child refinement)
    * @param {Object} feature - GeoJSON feature with climate properties
    * @returns {Object|null} Matched category info or null if unclassified
    */
   classify(feature) {
     const props = feature.properties;
 
-    // Evaluate categories in priority order
-    for (const category of this.getSortedCategories()) {
+    // PASS 1: Evaluate top-level (parent) categories only
+    let parentMatch = null;
+    for (const category of this.getTopLevelCategories()) {
       if (!category.enabled) continue;
 
       // Category with no rules never matches
@@ -450,15 +993,52 @@ export class CustomRulesEngine {
       );
 
       if (allRulesPass) {
-        return {
-          categoryId: category.id,
-          categoryName: category.name,
-          color: category.color,
-        };
+        parentMatch = category;
+        break;  // First matching parent wins (priority order)
       }
     }
 
-    return null; // Unclassified
+    // If no parent matches, unclassified
+    if (!parentMatch) {
+      return null;
+    }
+
+    // PASS 2: If parent has children, try to refine to a child category
+    const children = this.getChildCategories(parentMatch.id);
+    if (children.length > 0) {
+      for (const child of children) {
+        if (!child.enabled) continue;
+
+        // Child with no rules matches all features within parent
+        // (but we require at least one rule for meaningful sub-classification)
+        if (child.rules.length === 0) continue;
+
+        // All child rules must pass (AND logic)
+        const allChildRulesPass = child.rules.every(rule =>
+          this.evaluateRule(rule, props),
+        );
+
+        if (allChildRulesPass) {
+          // Child matched - return child category with parent info
+          return {
+            categoryId: child.id,
+            categoryName: child.name,
+            color: child.color,
+            parentId: parentMatch.id,
+            parentName: parentMatch.name,
+          };
+        }
+      }
+    }
+
+    // No child matched (or no children exist) - return parent match
+    return {
+      categoryId: parentMatch.id,
+      categoryName: parentMatch.name,
+      color: parentMatch.color,
+      parentId: null,
+      parentName: null,
+    };
   }
 
   /**
@@ -482,7 +1062,9 @@ export class CustomRulesEngine {
         id: cat.id,
         name: cat.name,
         color: cat.color,
-        count: 0,
+        count: 0,           // Direct matches only
+        totalCount: 0,      // Direct + all children (for parents)
+        parentId: cat.parentId,
       };
     }
 
@@ -499,12 +1081,22 @@ export class CustomRulesEngine {
             climate_type: result.categoryId,
             climate_name: result.categoryName,
             climate_color: result.color,
+            climate_parent_id: result.parentId || null,
+            climate_parent_name: result.parentName || null,
             classified: true,
           },
         });
         stats.classified++;
+
+        // Update direct count for the matched category
         if (stats.byCategory[result.categoryId]) {
           stats.byCategory[result.categoryId].count++;
+          stats.byCategory[result.categoryId].totalCount++;
+        }
+
+        // If matched a child, also increment parent's totalCount
+        if (result.parentId && stats.byCategory[result.parentId]) {
+          stats.byCategory[result.parentId].totalCount++;
         }
       } else {
         // Feature didn't match any category
@@ -515,6 +1107,8 @@ export class CustomRulesEngine {
             climate_type: null,
             climate_name: 'Unclassified',
             climate_color: '#CCCCCC',
+            climate_parent_id: null,
+            climate_parent_name: null,
             classified: false,
           },
         });
@@ -542,6 +1136,8 @@ export class CustomRulesEngine {
       description: category.description || '',
       priority: this.categories.length,
       enabled: true,
+      parentId: null,
+      children: [],
       rules: [],
     };
 
@@ -553,6 +1149,68 @@ export class CustomRulesEngine {
     }));
 
     return newCategory;
+  }
+
+  /**
+   * Add a child category under a parent
+   * @param {string} parentId - Parent category ID
+   * @param {Object} childData - Child category data
+   * @returns {Object|null} The created child category or null if parent not found
+   */
+  addChildCategory(parentId, childData = {}) {
+    const parent = this.getCategory(parentId);
+    if (!parent) return null;
+
+    // Generate a lighter/darker shade of the parent color for the child
+    const childColor = childData.color || this.generateChildColor(parent.color, parent.children.length);
+
+    const childCategory = {
+      id: generateId(),
+      name: childData.name || `${parent.name} Sub-type`,
+      color: childColor,
+      description: childData.description || '',
+      priority: this.categories.length,
+      enabled: true,
+      parentId: parentId,
+      children: [],  // Children cannot have their own children (one level only)
+      rules: [],
+    };
+
+    this.categories.push(childCategory);
+
+    // Update parent's children array
+    parent.children.push(childCategory.id);
+
+    // Dispatch event
+    document.dispatchEvent(new CustomEvent('koppen:child-category-added', {
+      detail: { parentId, category: childCategory },
+    }));
+
+    return childCategory;
+  }
+
+  /**
+   * Generate a color variant for a child category
+   * @param {string} parentColor - Parent's hex color
+   * @param {number} childIndex - Index of the child
+   * @returns {string} A variant hex color
+   */
+  generateChildColor(parentColor, childIndex) {
+    // Parse the hex color
+    const hex = parentColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+
+    // Alternate between lighter and darker variants
+    const factor = (childIndex % 2 === 0) ? 0.7 : 1.3;
+    const clamp = (val) => Math.min(255, Math.max(0, Math.round(val)));
+
+    const newR = clamp(r * factor);
+    const newG = clamp(g * factor);
+    const newB = clamp(b * factor);
+
+    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
   }
 
   /**
@@ -587,10 +1245,34 @@ export class CustomRulesEngine {
    * @returns {boolean} Whether the category was removed
    */
   removeCategory(categoryId) {
-    const index = this.categories.findIndex(c => c.id === categoryId);
-    if (index === -1) return false;
+    const category = this.getCategory(categoryId);
+    if (!category) return false;
 
-    this.categories.splice(index, 1);
+    // If this category has children, remove them first
+    if (category.children && category.children.length > 0) {
+      // Remove all children (make a copy since we're modifying the array)
+      [...category.children].forEach(childId => {
+        this.removeCategory(childId);
+      });
+    }
+
+    // If this is a child, remove it from parent's children array
+    if (category.parentId) {
+      const parent = this.getCategory(category.parentId);
+      if (parent) {
+        const childIndex = parent.children.indexOf(categoryId);
+        if (childIndex !== -1) {
+          parent.children.splice(childIndex, 1);
+        }
+      }
+    }
+
+    // Remove the category itself
+    const index = this.categories.findIndex(c => c.id === categoryId);
+    if (index !== -1) {
+      this.categories.splice(index, 1);
+    }
+
     this.normalizeProperties();
 
     // Dispatch event
@@ -739,8 +1421,8 @@ export class CustomRulesEngine {
    * @returns {Object} Serializable state
    */
   toJSON() {
-    return {
-      version: '1.0.0',
+    const json = {
+      version: '1.0.0',  // Keep version for backward compatibility
       type: 'custom-rules',
       categories: this.categories.map(cat => ({
         id: cat.id,
@@ -749,6 +1431,8 @@ export class CustomRulesEngine {
         description: cat.description,
         priority: cat.priority,
         enabled: cat.enabled,
+        parentId: cat.parentId,    // Added for sub-classification
+        children: cat.children,     // Added for sub-classification
         rules: cat.rules.map(rule => ({
           id: rule.id,
           parameter: rule.parameter,
@@ -757,6 +1441,22 @@ export class CustomRulesEngine {
         })),
       })),
     };
+
+    // Include custom parameters if any exist
+    const customParams = Object.values(this.customParameters);
+    if (customParams.length > 0) {
+      json.customParameters = customParams.map(param => ({
+        id: param.id,
+        name: param.name,
+        formula: param.formula,
+        unit: param.unit,
+        description: param.description,
+        range: param.range,
+        step: param.step,
+      }));
+    }
+
+    return json;
   }
 
   /**
@@ -769,7 +1469,7 @@ export class CustomRulesEngine {
       throw new Error('Invalid custom rules JSON: missing categories');
     }
 
-    return new CustomRulesEngine(json.categories);
+    return new CustomRulesEngine(json.categories, json.customParameters || []);
   }
 
   /**

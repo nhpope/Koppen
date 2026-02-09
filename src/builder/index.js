@@ -690,7 +690,7 @@ function createSwitchToKoppenSection() {
   button.addEventListener('click', async () => {
     const confirmed = await showConfirm(
       'Switch to Koppen mode? This will discard your custom categories and rules.',
-      { title: 'Switch Mode', type: 'warning' }
+      { title: 'Switch Mode', type: 'warning' },
     );
     if (confirmed) {
       // Clean up custom rules
@@ -882,7 +882,7 @@ function createPresetAttribution(preset) {
   reset.addEventListener('click', async () => {
     const confirmed = await showConfirm(
       'Reset all thresholds to Köppen defaults?',
-      { title: 'Reset Thresholds', type: 'warning' }
+      { title: 'Reset Thresholds', type: 'warning' },
     );
     if (confirmed) {
       const freshPreset = await presetLoader.resetToKoppen();

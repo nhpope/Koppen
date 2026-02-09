@@ -10,6 +10,7 @@
 
 import { DEFAULT_COLORS } from '../climate/custom-rules.js';
 import RuleEditor from './rule-editor.js';
+import { DerivedQuantityEditor } from './derived-quantity-editor.js';
 import logger from '../utils/logger.js';
 import { showConfirm } from '../ui/confirm-dialog.js';
 
@@ -29,6 +30,8 @@ class CategoryManager {
     this.onUpdate = onUpdate || (() => {});
     this.expandedCategoryId = null;
     this.ruleEditor = null;
+    this.derivedQuantityEditor = null;
+    this.derivedSectionExpanded = false;  // Track derived section state
     this.dragState = null;
 
     this.setupEventListeners();
@@ -53,6 +56,10 @@ class CategoryManager {
     this.container.innerHTML = '';
     this.container.className = 'category-manager';
 
+    // Derived quantities section (collapsible)
+    const derivedSection = this.createDerivedQuantitiesSection();
+    this.container.appendChild(derivedSection);
+
     // Header with add button
     const header = this.createHeader();
     this.container.appendChild(header);
@@ -64,6 +71,85 @@ class CategoryManager {
     // Stats summary
     const stats = this.createStatsSummary();
     this.container.appendChild(stats);
+  }
+
+  /**
+   * Create the derived quantities section
+   * @returns {HTMLElement}
+   */
+  createDerivedQuantitiesSection() {
+    const section = document.createElement('div');
+    section.className = 'category-manager__derived-section';
+
+    // Collapsible header
+    const header = document.createElement('button');
+    header.type = 'button';
+    header.className = 'category-manager__derived-header';
+    header.setAttribute('aria-expanded', this.derivedSectionExpanded ? 'true' : 'false');
+
+    const headerText = document.createElement('span');
+    headerText.textContent = 'Custom Parameters';
+
+    const customCount = this.engine.getAllCustomParameters().length;
+    const countBadge = document.createElement('span');
+    countBadge.className = 'category-manager__derived-count';
+    countBadge.textContent = customCount > 0 ? `(${customCount})` : '';
+
+    const expandIcon = document.createElement('span');
+    expandIcon.className = 'category-manager__derived-icon';
+    // Use correct icon based on saved state
+    expandIcon.textContent = this.derivedSectionExpanded ? '\u25BC' : '\u25B6';
+
+    header.appendChild(expandIcon);
+    header.appendChild(headerText);
+    header.appendChild(countBadge);
+
+    // Content container
+    const content = document.createElement('div');
+    content.className = 'category-manager__derived-content';
+    content.style.display = this.derivedSectionExpanded ? 'block' : 'none';
+
+    // If section was expanded, recreate the editor
+    if (this.derivedSectionExpanded) {
+      this.derivedQuantityEditor = new DerivedQuantityEditor(
+        content,
+        this.engine,
+        () => {
+          this.onUpdate();
+          // Update count badge
+          const newCount = this.engine.getAllCustomParameters().length;
+          countBadge.textContent = newCount > 0 ? `(${newCount})` : '';
+        },
+      );
+    }
+
+    // Toggle expand/collapse
+    header.addEventListener('click', () => {
+      const isExpanded = content.style.display !== 'none';
+      this.derivedSectionExpanded = !isExpanded;  // Save state
+      content.style.display = isExpanded ? 'none' : 'block';
+      expandIcon.textContent = isExpanded ? '\u25B6' : '\u25BC'; // Right or Down triangle
+      header.setAttribute('aria-expanded', !isExpanded);
+
+      // Initialize editor on first expand
+      if (!isExpanded && !this.derivedQuantityEditor) {
+        this.derivedQuantityEditor = new DerivedQuantityEditor(
+          content,
+          this.engine,
+          () => {
+            this.onUpdate();
+            // Update count badge
+            const newCount = this.engine.getAllCustomParameters().length;
+            countBadge.textContent = newCount > 0 ? `(${newCount})` : '';
+          },
+        );
+      }
+    });
+
+    section.appendChild(header);
+    section.appendChild(content);
+
+    return section;
   }
 
   /**
@@ -100,17 +186,25 @@ class CategoryManager {
     list.className = 'category-manager__list';
     list.setAttribute('role', 'list');
 
-    const categories = this.engine.getSortedCategories();
+    const topLevelCategories = this.engine.getTopLevelCategories();
 
-    if (categories.length === 0) {
+    if (topLevelCategories.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'category-manager__empty';
       empty.textContent = 'No categories yet. Click "+ Add" to create one.';
       list.appendChild(empty);
     } else {
-      categories.forEach(category => {
+      // Render hierarchically: parent followed by its children
+      topLevelCategories.forEach(category => {
         const item = this.createCategoryItem(category);
         list.appendChild(item);
+
+        // Render children indented below parent
+        const children = this.engine.getChildCategories(category.id);
+        children.forEach(child => {
+          const childItem = this.createCategoryItem(child, true);
+          list.appendChild(childItem);
+        });
       });
     }
 
@@ -120,9 +214,10 @@ class CategoryManager {
   /**
    * Create a category list item
    * @param {Object} category - Category data
+   * @param {boolean} isChild - Whether this is a child category
    * @returns {HTMLElement}
    */
-  createCategoryItem(category) {
+  createCategoryItem(category, isChild = false) {
     const isExpanded = this.expandedCategoryId === category.id;
 
     const item = document.createElement('div');
@@ -135,12 +230,17 @@ class CategoryManager {
     if (!category.enabled) {
       item.classList.add('category-item--disabled');
     }
+    if (isChild) {
+      item.classList.add('category-item--child');
+      item.dataset.parentId = category.parentId;
+    }
 
     // Drag handle
     const dragHandle = document.createElement('div');
     dragHandle.className = 'category-item__drag-handle';
     dragHandle.setAttribute('aria-label', 'Drag to reorder');
-    dragHandle.innerHTML = '<span></span><span></span><span></span>';
+    // Using safe static HTML for drag handle visualization
+    dragHandle.innerHTML = '<span></span><span></span><span></span>'; // eslint-disable-line no-unsanitized/property
     dragHandle.draggable = true;
     this.setupDragHandlers(dragHandle, category.id);
 
@@ -178,13 +278,29 @@ class CategoryManager {
     const actions = document.createElement('div');
     actions.className = 'category-item__actions';
 
+    // Add Sub-type button (only for top-level categories)
+    if (!isChild) {
+      const addSubBtn = document.createElement('button');
+      addSubBtn.type = 'button';
+      addSubBtn.className = 'category-item__add-sub-btn';
+      addSubBtn.setAttribute('aria-label', `Add sub-type to ${category.name}`);
+      addSubBtn.textContent = '+Sub';
+      addSubBtn.title = 'Add sub-type';
+      addSubBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handleAddChildCategory(category.id);
+      });
+      actions.appendChild(addSubBtn);
+    }
+
     // Toggle enabled
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'category-item__toggle-btn';
     toggleBtn.setAttribute('aria-label', category.enabled ? 'Disable category' : 'Enable category');
     toggleBtn.setAttribute('aria-pressed', category.enabled);
-    toggleBtn.innerHTML = category.enabled ? '&#10003;' : '&#10007;';
+    // Using safe static HTML entity for checkmark/x symbols
+    toggleBtn.innerHTML = category.enabled ? '&#10003;' : '&#10007;'; // eslint-disable-line no-unsanitized/property
     toggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.handleToggleCategory(category.id);
@@ -196,7 +312,8 @@ class CategoryManager {
     expandBtn.className = 'category-item__expand-btn';
     expandBtn.setAttribute('aria-label', isExpanded ? 'Collapse rules' : 'Edit rules');
     expandBtn.setAttribute('aria-expanded', isExpanded);
-    expandBtn.innerHTML = isExpanded ? '&#9650;' : '&#9660;';
+    // Using safe static HTML entity for arrow symbols
+    expandBtn.innerHTML = isExpanded ? '&#9650;' : '&#9660;'; // eslint-disable-line no-unsanitized/property
     expandBtn.addEventListener('click', () => this.toggleExpand(category.id));
 
     // Delete
@@ -204,7 +321,8 @@ class CategoryManager {
     deleteBtn.type = 'button';
     deleteBtn.className = 'category-item__delete-btn';
     deleteBtn.setAttribute('aria-label', `Delete ${category.name}`);
-    deleteBtn.innerHTML = '&times;';
+    // Using safe static HTML entity for times symbol
+    deleteBtn.innerHTML = '&times;'; // eslint-disable-line no-unsanitized/property
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.handleDeleteCategory(category.id);
@@ -380,7 +498,17 @@ class CategoryManager {
       Object.entries(stats.byCategory).forEach(([categoryId, data]) => {
         const countEl = this.container.querySelector(`.category-item__match-count[data-category-id="${categoryId}"]`);
         if (countEl) {
-          countEl.textContent = data.count?.toLocaleString() || '0';
+          // For parent categories with children, show totalCount; otherwise show count
+          const hasChildren = this.engine.hasChildren(categoryId);
+          const displayCount = hasChildren ? (data.totalCount ?? data.count) : data.count;
+          countEl.textContent = displayCount?.toLocaleString() || '0';
+
+          // Add title showing breakdown for parents with children
+          if (hasChildren && data.totalCount !== data.count) {
+            countEl.title = `${data.count} direct + ${data.totalCount - data.count} in sub-types`;
+          } else {
+            countEl.title = '';
+          }
         }
       });
     }
@@ -424,6 +552,24 @@ class CategoryManager {
   }
 
   /**
+   * Handle adding a child category under a parent
+   * @param {string} parentId - Parent category ID
+   */
+  handleAddChildCategory(parentId) {
+    const childCategory = this.engine.addChildCategory(parentId);
+    if (!childCategory) return;
+
+    this.expandedCategoryId = childCategory.id;
+    this.render();
+    this.onUpdate();
+
+    // Focus the new child category name for immediate editing
+    setTimeout(() => {
+      this.editCategoryName(childCategory.id);
+    }, 100);
+  }
+
+  /**
    * Handle deleting a category
    * @param {string} categoryId - Category ID
    */
@@ -433,7 +579,7 @@ class CategoryManager {
 
     const confirmed = await showConfirm(
       `Delete "${category.name}"? This cannot be undone.`,
-      { title: 'Delete Category', type: 'warning' }
+      { title: 'Delete Category', type: 'warning' },
     );
     if (!confirmed) return;
 
@@ -646,6 +792,9 @@ class CategoryManager {
   destroy() {
     if (this.ruleEditor) {
       this.ruleEditor.destroy();
+    }
+    if (this.derivedQuantityEditor) {
+      this.derivedQuantityEditor.destroy();
     }
     this.container.innerHTML = '';
   }

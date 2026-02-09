@@ -18,6 +18,12 @@ let selectedType = null;
 let isCollapsed = false;
 let stats = {};
 
+// Custom mode state
+let isCustomMode = false;
+let customCategories = [];
+let customStats = {};
+let expandedParents = new Set();  // Track which parent categories are expanded
+
 // Climate type groups
 const CLIMATE_GROUPS = {
   A: { name: 'Tropical', types: ['Af', 'Am', 'Aw', 'As'] },
@@ -50,6 +56,29 @@ export function createLegend(container) {
 function render() {
   if (!legendElement) return;
 
+  if (isCustomMode) {
+    renderCustomMode();
+  } else {
+    renderKoppenMode();
+  }
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string
+ */
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/**
+ * Render Köppen mode legend
+ */
+function renderKoppenMode() {
+  // eslint-disable-next-line no-unsanitized/property -- Template uses hardcoded Köppen climate group data
   legendElement.innerHTML = `
     <div class="legend__header">
       <h2 class="legend__title">Climate Types</h2>
@@ -68,6 +97,131 @@ function render() {
           </div>
         </div>
       `).join('')}
+    </div>
+  `;
+}
+
+/**
+ * Render custom mode legend with hierarchical categories
+ */
+function renderCustomMode() {
+  // Get top-level categories (no parent)
+  const topLevelCategories = customCategories.filter(cat => cat.parentId === null);
+
+  // eslint-disable-next-line no-unsanitized/property -- Category names are escaped via escapeHtml()
+  legendElement.innerHTML = `
+    <div class="legend__header">
+      <h2 class="legend__title">Custom Categories</h2>
+      <button class="legend__toggle" aria-label="Toggle legend" aria-expanded="${!isCollapsed}">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="${isCollapsed ? 'M6 4l4 4-4 4' : 'M4 6l4 4 4-4'}"/>
+        </svg>
+      </button>
+    </div>
+    <div class="legend__content ${isCollapsed ? 'legend__content--collapsed' : ''}">
+      <div class="legend__custom-items">
+        ${topLevelCategories.map(cat => renderCustomCategory(cat)).join('')}
+      </div>
+      ${renderUnclassifiedItem()}
+    </div>
+  `;
+}
+
+/**
+ * Render a custom category item (with children if any)
+ * @param {Object} category - Category data
+ * @returns {string} HTML string
+ */
+function renderCustomCategory(category) {
+  const children = customCategories.filter(cat => cat.parentId === category.id);
+  const hasChildren = children.length > 0;
+  const isExpanded = expandedParents.has(category.id);
+  const isActive = selectedType === category.id;
+
+  // Get stats for this category
+  const catStats = customStats[category.id] || { count: 0, totalCount: 0 };
+  const displayCount = hasChildren ? catStats.totalCount : catStats.count;
+
+  // Escape user-provided category name
+  const safeName = escapeHtml(category.name);
+
+  let html = `
+    <div class="legend__custom-group ${hasChildren ? 'legend__custom-group--has-children' : ''}" data-category-id="${escapeHtml(category.id)}">
+      <button class="legend__custom-item ${isActive ? 'legend__custom-item--active' : ''}"
+              data-type="${escapeHtml(category.id)}"
+              tabindex="0"
+              role="option"
+              aria-selected="${isActive}"
+              title="${isActive ? 'Click to show all' : 'Click to filter map'}">
+        ${hasChildren ? `
+          <span class="legend__expand-toggle ${isExpanded ? 'legend__expand-toggle--expanded' : ''}"
+                data-toggle-parent="${escapeHtml(category.id)}"
+                aria-label="${isExpanded ? 'Collapse' : 'Expand'} ${safeName}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="${isExpanded ? 'M3 4l3 3 3-3' : 'M4 3l3 3-3 3'}"/>
+            </svg>
+          </span>
+        ` : '<span class="legend__expand-placeholder"></span>'}
+        <span class="legend__color" style="background-color: ${escapeHtml(category.color)}"></span>
+        <span class="legend__label">
+          <span class="legend__name">${safeName}</span>
+        </span>
+        ${displayCount > 0 ? `<span class="legend__count">${displayCount.toLocaleString()}</span>` : ''}
+      </button>
+  `;
+
+  // Render children if expanded
+  if (hasChildren && isExpanded) {
+    html += `<div class="legend__custom-children">`;
+    children.forEach(child => {
+      const childActive = selectedType === child.id;
+      const childStats = customStats[child.id] || { count: 0 };
+      const safeChildName = escapeHtml(child.name);
+      html += `
+        <button class="legend__custom-item legend__custom-item--child ${childActive ? 'legend__custom-item--active' : ''}"
+                data-type="${escapeHtml(child.id)}"
+                data-parent-id="${escapeHtml(category.id)}"
+                tabindex="0"
+                role="option"
+                aria-selected="${childActive}"
+                title="${childActive ? 'Click to show all' : 'Click to filter map'}">
+          <span class="legend__color" style="background-color: ${escapeHtml(child.color)}"></span>
+          <span class="legend__label">
+            <span class="legend__name">${safeChildName}</span>
+          </span>
+          ${childStats.count > 0 ? `<span class="legend__count">${childStats.count.toLocaleString()}</span>` : ''}
+        </button>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+/**
+ * Render unclassified item for custom mode
+ * @returns {string} HTML string
+ */
+function renderUnclassifiedItem() {
+  const unclassifiedCount = customStats._unclassified || 0;
+  const isActive = selectedType === '_unclassified';
+
+  return `
+    <div class="legend__custom-unclassified">
+      <button class="legend__custom-item legend__custom-item--unclassified ${isActive ? 'legend__custom-item--active' : ''}"
+              data-type="_unclassified"
+              tabindex="0"
+              role="option"
+              aria-selected="${isActive}">
+        <span class="legend__expand-placeholder"></span>
+        <span class="legend__color" style="background-color: #CCCCCC"></span>
+        <span class="legend__label">
+          <span class="legend__name">Unclassified</span>
+        </span>
+        ${unclassifiedCount > 0 ? `<span class="legend__count">${unclassifiedCount.toLocaleString()}</span>` : ''}
+      </button>
     </div>
   `;
 }
@@ -106,7 +260,7 @@ function renderItem(type) {
 function setupEventListeners() {
   if (!legendElement) return;
 
-  // Toggle button
+  // Toggle button and item clicks
   legendElement.addEventListener('click', (e) => {
     const toggle = e.target.closest('.legend__toggle');
     if (toggle) {
@@ -114,9 +268,26 @@ function setupEventListeners() {
       return;
     }
 
+    // Handle expand/collapse toggle for custom mode parent categories
+    const expandToggle = e.target.closest('[data-toggle-parent]');
+    if (expandToggle) {
+      e.stopPropagation();
+      const parentId = expandToggle.dataset.toggleParent;
+      toggleParentExpanded(parentId);
+      return;
+    }
+
+    // Handle standard Köppen legend item click
     const item = e.target.closest('.legend__item');
     if (item) {
       handleItemClick(item.dataset.type);
+      return;
+    }
+
+    // Handle custom mode legend item click
+    const customItem = e.target.closest('.legend__custom-item');
+    if (customItem) {
+      handleItemClick(customItem.dataset.type);
     }
   });
 
@@ -141,11 +312,79 @@ function setupEventListeners() {
   document.addEventListener('koppen:clear-filter', () => {
     deselectType();
   });
+
+  // Listen for mode changes (koppen vs custom)
+  document.addEventListener('koppen:mode-changed', (e) => {
+    const { mode } = e.detail || {};
+    isCustomMode = (mode === 'custom');
+    selectedType = null;  // Clear selection on mode change
+    if (!isCustomMode) {
+      customCategories = [];
+      customStats = {};
+      expandedParents.clear();
+    }
+    render();
+    logger.log(`[Koppen] Legend mode changed to: ${mode}`);
+  });
+
+  // Listen for custom rules changes to update categories
+  document.addEventListener('koppen:custom-rules-changed', (e) => {
+    const { engine, categories } = e.detail || {};
+    if (categories) {
+      customCategories = categories;
+      render();
+    }
+  });
+
+  // Listen for classification stats in custom mode
+  document.addEventListener('koppen:classification-stats', (e) => {
+    const { stats: newStats } = e.detail || {};
+    if (isCustomMode && newStats) {
+      updateCustomStats(newStats);
+    }
+  });
+}
+
+/**
+ * Toggle expanded state for a parent category
+ * @param {string} parentId - Parent category ID
+ */
+function toggleParentExpanded(parentId) {
+  if (expandedParents.has(parentId)) {
+    expandedParents.delete(parentId);
+  } else {
+    expandedParents.add(parentId);
+  }
+  render();
+}
+
+/**
+ * Update custom mode stats
+ * @param {Object} newStats - Stats from classification
+ */
+function updateCustomStats(newStats) {
+  customStats = {};
+
+  // Convert byCategory to our format
+  if (newStats.byCategory) {
+    Object.entries(newStats.byCategory).forEach(([catId, data]) => {
+      customStats[catId] = {
+        count: data.count || 0,
+        totalCount: data.totalCount || data.count || 0,
+      };
+    });
+  }
+
+  // Store unclassified count
+  customStats._unclassified = newStats.unclassified || 0;
+
+  // Re-render to update counts
+  render();
 }
 
 /**
  * Handle legend item click
- * @param {string} type - Climate type code
+ * @param {string} type - Climate type code or category ID
  */
 function handleItemClick(type) {
   if (selectedType === type) {
@@ -153,6 +392,15 @@ function handleItemClick(type) {
   } else {
     selectType(type);
   }
+}
+
+/**
+ * Get category info by ID for custom mode
+ * @param {string} categoryId - Category ID
+ * @returns {Object|null} Category data or null
+ */
+function getCustomCategory(categoryId) {
+  return customCategories.find(cat => cat.id === categoryId) || null;
 }
 
 /**
@@ -230,8 +478,8 @@ function toggleCollapse() {
 }
 
 /**
- * Select a climate type
- * @param {string} type - Climate type code
+ * Select a climate type or custom category
+ * @param {string} type - Climate type code or category ID
  * @param {boolean} fromExternal - Whether selection came from outside legend
  */
 export function selectType(type, fromExternal = false) {
@@ -239,7 +487,7 @@ export function selectType(type, fromExternal = false) {
   if (selectedType) {
     const prevItem = legendElement.querySelector(`[data-type="${selectedType}"]`);
     if (prevItem) {
-      prevItem.classList.remove('legend__item--active');
+      prevItem.classList.remove('legend__item--active', 'legend__custom-item--active');
       prevItem.setAttribute('aria-selected', 'false');
     }
   }
@@ -248,7 +496,8 @@ export function selectType(type, fromExternal = false) {
   selectedType = type;
   const item = legendElement.querySelector(`[data-type="${type}"]`);
   if (item) {
-    item.classList.add('legend__item--active');
+    const activeClass = isCustomMode ? 'legend__custom-item--active' : 'legend__item--active';
+    item.classList.add(activeClass);
     item.setAttribute('aria-selected', 'true');
     item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -258,9 +507,24 @@ export function selectType(type, fromExternal = false) {
 
   // Dispatch event (only if selection initiated from legend)
   if (!fromExternal) {
-    document.dispatchEvent(new CustomEvent('koppen:climate-selected', {
-      detail: { type },
-    }));
+    if (isCustomMode) {
+      // For custom mode, include parent info for child categories
+      const category = getCustomCategory(type);
+      const parentCategory = category?.parentId ? getCustomCategory(category.parentId) : null;
+
+      document.dispatchEvent(new CustomEvent('koppen:custom-category-selected', {
+        detail: {
+          categoryId: type,
+          categoryName: category?.name || type,
+          parentId: parentCategory?.id || null,
+          parentName: parentCategory?.name || null,
+        },
+      }));
+    } else {
+      document.dispatchEvent(new CustomEvent('koppen:climate-selected', {
+        detail: { type },
+      }));
+    }
   }
 
   logger.log(`[Koppen] Legend: ${type} selected`);
@@ -304,7 +568,30 @@ function updateFilterIndicator(type) {
     return;
   }
 
-  const info = CLIMATE_TYPES[type] || { name: type };
+  // Get display info based on mode
+  let displayName;
+  let displayCode;
+
+  if (isCustomMode) {
+    if (type === '_unclassified') {
+      displayName = 'Unclassified';
+      displayCode = '';
+    } else {
+      const category = getCustomCategory(type);
+      displayName = category?.name || type;
+      // For child categories, show "Parent > Child" format
+      if (category?.parentId) {
+        const parent = getCustomCategory(category.parentId);
+        displayCode = parent ? `${parent.name} >` : '';
+      } else {
+        displayCode = '';
+      }
+    }
+  } else {
+    const info = CLIMATE_TYPES[type] || { name: type };
+    displayName = info.name;
+    displayCode = type;
+  }
 
   if (!indicator) {
     indicator = document.createElement('div');
@@ -316,12 +603,16 @@ function updateFilterIndicator(type) {
     }
   }
 
-  // eslint-disable-next-line no-secrets/no-secrets
+  // Safely set content with escaped values
+  const safeName = escapeHtml(displayName);
+  const safeCode = escapeHtml(displayCode);
+
+  // eslint-disable-next-line no-unsanitized/property -- Values are escaped via escapeHtml()
   indicator.innerHTML = `
     <span class="filter-indicator__label">Showing:</span>
     <span class="filter-indicator__type">
-      <span class="filter-indicator__code">${type}</span>
-      <span class="filter-indicator__name">${info.name}</span>
+      ${safeCode ? `<span class="filter-indicator__code">${safeCode}</span>` : ''}
+      <span class="filter-indicator__name">${safeName}</span>
     </span>
     <button class="filter-indicator__clear" aria-label="Clear filter">&times;</button>
   `;
@@ -381,6 +672,12 @@ export function destroy() {
   selectedType = null;
   isCollapsed = false;
   stats = {};
+
+  // Clear custom mode state
+  isCustomMode = false;
+  customCategories = [];
+  customStats = {};
+  expandedParents.clear();
 
   // Remove filter indicator
   const indicator = document.querySelector('.filter-indicator');

@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { generateURL, decodeURL, hasSharedState, estimateURLSize } from '../../../src/export/url-encoder.js';
 import { KOPPEN_PRESET } from '../../../src/climate/presets.js';
+import * as pako from 'pako';
 
 describe('URL Encoder', () => {
   // Sample classification state
@@ -194,7 +195,6 @@ describe('URL Encoder', () => {
 
     it('should throw error for unsupported schema version', () => {
       // Create a manually crafted URL with wrong schema version
-      const pako = require('pako');
       const wrongVersionState = { v: 999, n: 'Test', t: {} };
       const json = JSON.stringify(wrongVersionState);
       const compressed = pako.gzip(json);

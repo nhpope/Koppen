@@ -173,6 +173,7 @@ describe('Export Module (Story 6.1)', () => {
 
     it('should return null for invalid base64', () => {
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // eslint-disable-next-line no-secrets/no-secrets -- Test URL with intentionally invalid base64, not a secret
       const url = 'https://example.com?rules=invalid!!!base64';
 
       const result = exportModule.parseURL(url);

@@ -31,9 +31,9 @@ describe('Header Module (Story 6.8)', () => {
     localStorage.clear();
 
     // Reset window properties
-    // @ts-ignore
+    // @ts-expect-error - Deleting test properties from window
     delete window.KOPPEN_ANALYTICS_ENABLED;
-    // @ts-ignore
+    // @ts-expect-error - Deleting test properties from window
     delete window.trackEvent;
   });
 
@@ -143,7 +143,7 @@ describe('Header Module (Story 6.8)', () => {
 
     it('should NOT call window.trackEvent when analytics disabled', () => {
       const mockTrackEvent = vi.fn();
-      // @ts-ignore
+      // @ts-expect-error - Adding test property to window
       window.trackEvent = mockTrackEvent;
       // KOPPEN_ANALYTICS_ENABLED is not set (undefined)
 
@@ -154,9 +154,9 @@ describe('Header Module (Story 6.8)', () => {
 
     it('should call window.trackEvent when analytics enabled', () => {
       const mockTrackEvent = vi.fn();
-      // @ts-ignore
+      // @ts-expect-error - Adding test property to window
       window.KOPPEN_ANALYTICS_ENABLED = true;
-      // @ts-ignore
+      // @ts-expect-error - Adding test property to window
       window.trackEvent = mockTrackEvent;
 
       header.trackDonationClick();

@@ -38,11 +38,16 @@ function createDialogElement(options) {
     success: '✅',
   };
 
+  // Security note: icons[type] is safe (internal enum), user inputs are escaped via escapeHtml()
+  /* eslint-disable security/detect-object-injection */
+  const iconHtml = icons[type] || icons.info;
+  /* eslint-enable security/detect-object-injection */
+
   dialog.innerHTML = `
     <div class="confirm-dialog__backdrop" aria-hidden="true"></div>
     <div class="confirm-dialog__content">
       <div class="confirm-dialog__header">
-        <span class="confirm-dialog__icon" aria-hidden="true">${icons[type] || icons.info}</span>
+        <span class="confirm-dialog__icon" aria-hidden="true">${iconHtml}</span>
         <h2 id="confirm-dialog-title" class="confirm-dialog__title">${escapeHtml(title)}</h2>
       </div>
       <p id="confirm-dialog-message" class="confirm-dialog__message">${escapeHtml(message)}</p>

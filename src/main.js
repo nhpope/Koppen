@@ -264,6 +264,8 @@ async function restoreFromURL() {
       app.modules.builder.open();
 
       // Wait for builder to initialize, then start from Köppen
+      // NOTE: Intentional fire-and-forget async - URL restoration happens in background
+      // No await needed as this is non-blocking UI enhancement
       setTimeout(async () => {
         // Trigger Köppen preset load (will be modified by thresholds)
         const koppenBtn = document.getElementById('start-from-koppen');

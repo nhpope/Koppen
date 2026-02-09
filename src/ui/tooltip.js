@@ -181,19 +181,39 @@ function show(data) {
   const info = CLIMATE_TYPES[type] || { name: name || 'Unknown' };
   const color = getClimateColor(type);
 
-  // Build tooltip content
-  tooltipElement.innerHTML = `
-    <div class="tooltip__header">
-      <span class="tooltip__color" style="background-color: ${color}"></span>
-      <span class="tooltip__code">${type}</span>
-      <span class="tooltip__name">${info.name}</span>
-    </div>
-    ${lat !== undefined && lon !== undefined ? `
-      <div class="tooltip__coords">
-        ${formatCoordinate(lat, 'lat')}, ${formatCoordinate(lon, 'lon')}
-      </div>
-    ` : ''}
-  `;
+  // Build tooltip content - using DOM methods to prevent XSS
+  // Clear existing content safely
+  while (tooltipElement.firstChild) {
+    tooltipElement.removeChild(tooltipElement.firstChild);
+  }
+
+  const header = document.createElement('div');
+  header.className = 'tooltip__header';
+
+  const colorSpan = document.createElement('span');
+  colorSpan.className = 'tooltip__color';
+  colorSpan.style.backgroundColor = color;
+
+  const codeSpan = document.createElement('span');
+  codeSpan.className = 'tooltip__code';
+  codeSpan.textContent = type; // Safe - textContent prevents XSS
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'tooltip__name';
+  nameSpan.textContent = info.name; // Safe - textContent prevents XSS
+
+  header.appendChild(colorSpan);
+  header.appendChild(codeSpan);
+  header.appendChild(nameSpan);
+  tooltipElement.appendChild(header);
+
+  // Add coordinates if present
+  if (lat !== undefined && lon !== undefined) {
+    const coords = document.createElement('div');
+    coords.className = 'tooltip__coords';
+    coords.textContent = `${formatCoordinate(lat, 'lat')}, ${formatCoordinate(lon, 'lon')}`;
+    tooltipElement.appendChild(coords);
+  }
 
   // Show tooltip
   tooltipElement.classList.add('tooltip--visible');

@@ -42,6 +42,58 @@ function createModalElement() {
 }
 
 /**
+ * Create a social share button
+ * @param {Object} options - Button options
+ * @param {string} options.platform - Platform identifier (twitter, facebook, etc.)
+ * @param {string} options.label - Accessible label
+ * @param {string} options.icon - Icon text/emoji
+ * @param {string} options.url - Share URL
+ * @returns {HTMLButtonElement} Social button element
+ */
+function createSocialButton({ platform, label, icon, url }) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `share-modal__social-btn share-modal__social-btn--${platform}`;
+  btn.setAttribute('aria-label', `Share on ${label}`);
+  btn.setAttribute('data-share-social', platform);
+
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'share-modal__social-icon';
+  iconSpan.setAttribute('aria-hidden', 'true');
+  iconSpan.textContent = icon;
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'share-modal__social-text';
+  labelSpan.textContent = label;
+
+  btn.appendChild(iconSpan);
+  btn.appendChild(labelSpan);
+
+  btn.addEventListener('click', () => {
+    // Open share URL in popup window
+    const width = 600;
+    const height = 400;
+    const left = (window.innerWidth - width) / 2;
+    const top = (window.innerHeight - height) / 2;
+
+    window.open(
+      url,
+      `share-${platform}`,
+      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
+    );
+
+    // Track share event
+    document.dispatchEvent(new CustomEvent('koppen:social-share', {
+      detail: { platform },
+    }));
+
+    logger.log(`[Koppen] Shared on ${platform}`);
+  });
+
+  return btn;
+}
+
+/**
  * Render modal content
  * @param {string} url - Shareable URL
  * @param {number} urlSize - URL size in characters
@@ -128,9 +180,64 @@ function renderContent(url, urlSize) {
     meta.appendChild(warning);
   }
 
+  // Social share buttons section
+  const socialSection = document.createElement('div');
+  socialSection.className = 'share-modal__social';
+
+  const socialLabel = document.createElement('span');
+  socialLabel.className = 'share-modal__social-label';
+  socialLabel.textContent = 'Share on:';
+
+  const socialButtons = document.createElement('div');
+  socialButtons.className = 'share-modal__social-buttons';
+
+  // Share text for social posts
+  const shareText = 'Check out this custom Köppen climate classification!';
+
+  // Twitter/X
+  const twitterBtn = createSocialButton({
+    platform: 'twitter',
+    label: 'Twitter/X',
+    icon: '𝕏',
+    url: `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareText)}`,
+  });
+
+  // Facebook
+  const facebookBtn = createSocialButton({
+    platform: 'facebook',
+    label: 'Facebook',
+    icon: 'f',
+    url: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+  });
+
+  // LinkedIn
+  const linkedinBtn = createSocialButton({
+    platform: 'linkedin',
+    label: 'LinkedIn',
+    icon: 'in',
+    url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+  });
+
+  // Reddit
+  const redditBtn = createSocialButton({
+    platform: 'reddit',
+    label: 'Reddit',
+    icon: '⬆',
+    url: `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(shareText)}`,
+  });
+
+  socialButtons.appendChild(twitterBtn);
+  socialButtons.appendChild(facebookBtn);
+  socialButtons.appendChild(linkedinBtn);
+  socialButtons.appendChild(redditBtn);
+
+  socialSection.appendChild(socialLabel);
+  socialSection.appendChild(socialButtons);
+
   // Assemble body
   body.appendChild(description);
   body.appendChild(urlContainer);
+  body.appendChild(socialSection);
   body.appendChild(meta);
 
   // Assemble modal

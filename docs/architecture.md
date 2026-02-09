@@ -178,6 +178,28 @@ src/
 └── utils/         # URL encoding, data parsing
 ```
 
+**Module Initialization Order:**
+
+Modules initialize in a specific order due to dependencies (see `src/main.js:42-58`):
+
+1. **Utils** (first) - Provides logging, constants, shared utilities needed by all modules
+2. **Map** (async) - Loads Leaflet library and initializes interactive map
+3. **Climate** - Loads classification engine (depends on data-loader from utils)
+4. **UI** - Initializes UI components (depends on DOM being ready)
+5. **Builder** - Classification builder (depends on climate rules being loaded)
+6. **Export** (last) - Export functionality (depends on map and climate state)
+
+**Why This Order Matters:**
+- Utils must be first because it provides the logger used by all other modules
+- Map must initialize before climate because climate renders to the map
+- Climate must load before builder because builder modifies climate rules
+- Export must be last because it depends on both map (PNG capture) and climate (state encoding)
+
+**Violation Consequences:**
+- Initializing climate before map → Climate has no layer to render to
+- Initializing builder before climate → No rules to modify
+- Initializing export before map → Cannot capture map as PNG
+
 ### Infrastructure & Deployment
 
 | Decision | Choice | Rationale |

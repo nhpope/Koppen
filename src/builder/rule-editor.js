@@ -141,11 +141,26 @@ class RuleEditor {
       temperature: { label: 'Temperature', params: [] },
       precipitation: { label: 'Precipitation', params: [] },
       derived: { label: 'Derived', params: [] },
+      custom: { label: 'Custom', params: [] },
     };
 
+    // Add built-in parameters
     Object.entries(PARAMETERS).forEach(([id, param]) => {
       const group = groups[param.category] || groups.derived;
       group.params.push({ id, ...param });
+    });
+
+    // Add custom parameters from the engine
+    const allParams = this.engine.getAllParameters();
+    Object.entries(allParams).forEach(([id, param]) => {
+      if (param.isCustom) {
+        groups.custom.params.push({
+          id,
+          shortLabel: param.shortLabel || param.label,
+          label: param.label,
+          ...param,
+        });
+      }
     });
 
     Object.entries(groups).forEach(([, group]) => {
@@ -244,7 +259,9 @@ class RuleEditor {
     const container = document.createElement('div');
     container.className = 'rule-row__value-container';
 
-    const param = PARAMETERS[rule.parameter] || { range: [-100, 100], step: 1 };
+    // Check both built-in and custom parameters
+    const allParams = this.engine.getAllParameters();
+    const param = allParams[rule.parameter] || PARAMETERS[rule.parameter] || { range: [-100, 100], step: 1 };
     const isRange = rule.operator === 'in_range' || rule.operator === 'not_in_range';
 
     if (isRange) {

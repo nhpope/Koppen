@@ -8,8 +8,7 @@ vi.mock('../../../src/export/url-encoder.js', () => ({
   generateURL: vi.fn((state) => {
     if (!state) throw new Error('No state provided');
     if (state.error) throw new Error(state.error);
-    const url = `https://example.com/?name=${encodeURIComponent(state.name || 'Test')}&data=encoded`;
-    return url;
+    return `https://example.com/?name=${encodeURIComponent(state.name || 'Test')}&data=encoded`;
   }),
 }));
 
@@ -256,7 +255,7 @@ describe('Share Modal Module (Story 6.3)', () => {
 
       expect(mockShowError).toHaveBeenCalledWith(
         'Failed to generate share URL: Encoding failed',
-        { title: 'Share Error' }
+        { title: 'Share Error' },
       );
       expect(eventListener).toHaveBeenCalled();
       expect(isModalOpen()).toBe(false);

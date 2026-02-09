@@ -36,6 +36,8 @@ let selectedLayer = null;
 let activeFilter = null;
 let map = null;
 let currentMode = 'base'; // 'base' or 'detail'
+let isLoadingTiles = false; // Module-level flag to prevent concurrent tile loads
+let isSwitchingMode = false; // Flag to prevent re-entry during mode switch
 const loadedTileFiles = new Set(); // Track which tiles are loaded
 const loadedTileFeatures = new Map(); // Store original unclassified tile features for reclassification
 
@@ -43,7 +45,7 @@ const loadedTileFeatures = new Map(); // Store original unclassified tile featur
 let currentThresholds = DEFAULT_THRESHOLDS;
 
 // Custom rules support
-// eslint-disable-next-line no-unused-vars -- State tracking for future mode-dependent features
+ 
 let classificationMode = 'koppen'; // 'koppen' or 'custom'
 // eslint-disable-next-line no-unused-vars -- Reference stored for future custom rules integration
 let customRulesEngine = null; // Reference to CustomRulesEngine when in custom mode
@@ -150,11 +152,19 @@ function classifyFeatures(features, thresholds = DEFAULT_THRESHOLDS) {
 function getFeatureStyle(feature) {
   const props = feature.properties;
   const type = props.climate_type;
-  const isClassified = props.classified !== false && type != null;
 
-  // Handle unclassified features (custom rules mode)
-  if (!isClassified && classificationMode === 'custom') {
-    return { ...UNCLASSIFIED_STYLE };
+  // In custom mode, only show as classified if explicitly marked by custom rules
+  if (classificationMode === 'custom') {
+    // Feature must have classified === true (from custom rules engine)
+    if (props.classified !== true) {
+      return { ...UNCLASSIFIED_STYLE };
+    }
+  } else {
+    // In Köppen mode, use standard classification check
+    const isClassified = props.classified !== false && type != null;
+    if (!isClassified) {
+      return { ...UNCLASSIFIED_STYLE };
+    }
   }
 
   // Check if feature matches active filter
@@ -517,7 +527,7 @@ export function reclassify(thresholds) {
       });
     });
   } else if (baseLayer || detailLayer) {
-    // Hybrid loading approach - update currently visible layer
+    // Hybrid loading approach - update layers based on current mode
     if (currentMode === 'base' && baseLayer && originalBaseFeatures) {
       // Remove pre-classified climate_type to force reclassification
       const unclassifiedFeatures = originalBaseFeatures.map(f => ({
@@ -545,12 +555,48 @@ export function reclassify(thresholds) {
           click: onFeatureClick,
         });
       });
+
+      // ALSO reclassify cached detail tiles so they're ready when user zooms in
+      if (detailLayer && loadedTileFeatures.size > 0) {
+        logger.log(`[Koppen] Also reclassifying ${loadedTileFeatures.size} cached detail tiles in background`);
+        const allDetailFeatures = [];
+
+        for (const [, features] of loadedTileFeatures) {
+          const unclassifiedTileFeatures = features.map(f => ({
+            ...f,
+            properties: {
+              ...f.properties,
+              climate_type: undefined,
+              classifiedType: undefined,
+            },
+          }));
+          const classifiedTileFeatures = classifyFeatures(unclassifiedTileFeatures, thresholds);
+          allDetailFeatures.push(...classifiedTileFeatures);
+        }
+
+        // Update detail layer (even though it's not visible)
+        detailLayer.clearLayers();
+        detailLayer.addData({
+          type: 'FeatureCollection',
+          features: allDetailFeatures,
+        });
+
+        detailLayer.eachLayer(layer => {
+          layer.on({
+            mouseover: onFeatureHover,
+            mouseout: onFeatureLeave,
+            click: onFeatureClick,
+          });
+        });
+
+        logger.log(`[Koppen] Cached detail tiles reclassified: ${allDetailFeatures.length} features`);
+      }
     } else if (currentMode === 'detail' && detailLayer) {
       // In detail mode, reclassify ALL loaded detail tiles
       const allDetailFeatures = [];
 
       // Collect and reclassify all loaded tile features
-      // eslint-disable-next-line no-unused-vars -- tileFile key not needed, iterating for features only
+       
       for (const [, features] of loadedTileFeatures) {
         // Remove pre-classified climate_type to force reclassification
         const unclassifiedFeatures = features.map(f => ({
@@ -711,24 +757,33 @@ export async function createHybridClimateLayer(mapInstance, thresholds) {
  * Set up handlers for hybrid loading (zoom/pan events)
  */
 function setupHybridLoadingHandlers() {
-  let loadingTiles = false;
+  let handlerRunning = false; // Prevent re-entry during async operations
 
   const handleViewChange = async () => {
-    const zoom = map.getZoom();
+    // Prevent concurrent execution of this handler
+    if (handlerRunning || isSwitchingMode) {
+      logger.log('[Koppen] Skipping handleViewChange - already running or switching mode');
+      return;
+    }
+    handlerRunning = true;
 
-    // Switch to detail mode at zoom threshold
-    if (zoom >= CONSTANTS.DETAIL_ZOOM_THRESHOLD && currentMode === 'base') {
-      await switchToDetailMode();
-    }
-    // Switch back to base mode when zoomed out
-    else if (zoom < CONSTANTS.DETAIL_ZOOM_THRESHOLD && currentMode === 'detail') {
-      await switchToBaseMode();
-    }
-    // Load additional tiles in detail mode
-    else if (currentMode === 'detail' && !loadingTiles) {
-      loadingTiles = true;
-      await loadVisibleTiles();
-      loadingTiles = false;
+    try {
+      const zoom = map.getZoom();
+
+      // Switch to detail mode at zoom threshold
+      if (zoom >= CONSTANTS.DETAIL_ZOOM_THRESHOLD && currentMode === 'base') {
+        await switchToDetailMode();
+      }
+      // Switch back to base mode when zoomed out
+      else if (zoom < CONSTANTS.DETAIL_ZOOM_THRESHOLD && currentMode === 'detail') {
+        await switchToBaseMode();
+      }
+      // Load additional tiles in detail mode
+      else if (currentMode === 'detail' && !isLoadingTiles) {
+        await loadVisibleTiles();
+      }
+    } finally {
+      handlerRunning = false;
     }
   };
 
@@ -739,57 +794,94 @@ function setupHybridLoadingHandlers() {
  * Switch from base layer to detail tiles
  */
 async function switchToDetailMode() {
-  logger.log('[Koppen] Switching to detail mode (0.25° tiles)');
-
-  // Create detail layer if it doesn't exist
-  if (!detailLayer) {
-    detailLayer = L.geoJSON(null, {
-      style: getFeatureStyle,
-      onEachFeature: (feature, layer) => {
-        layer.on({
-          mouseover: onFeatureHover,
-          mouseout: onFeatureLeave,
-          click: onFeatureClick,
-        });
-      },
-    });
+  // Prevent concurrent mode switches
+  if (isSwitchingMode) {
+    logger.log('[Koppen] Already switching mode, skipping');
+    return;
   }
+  isSwitchingMode = true;
 
-  // Add detail layer and hide base layer
-  detailLayer.addTo(map);
-  if (baseLayer) {
-    map.removeLayer(baseLayer);
+  try {
+    logger.log('[Koppen] Switching to detail mode (0.25° tiles)');
+
+    // Create detail layer if it doesn't exist
+    if (!detailLayer) {
+      detailLayer = L.geoJSON(null, {
+        style: getFeatureStyle,
+        onEachFeature: (feature, layer) => {
+          layer.on({
+            mouseover: onFeatureHover,
+            mouseout: onFeatureLeave,
+            click: onFeatureClick,
+          });
+        },
+      });
+    }
+
+    // Add detail layer and hide base layer
+    detailLayer.addTo(map);
+    if (baseLayer) {
+      map.removeLayer(baseLayer);
+    }
+
+    currentMode = 'detail';
+
+    // Load tiles for current view
+    await loadVisibleTiles();
+
+    // Refresh styles on all detail layers to ensure consistency after mode switch
+    if (detailLayer) {
+      detailLayer.eachLayer(layer => {
+        if (layer && layer.feature) {
+          layer.setStyle(getFeatureStyle(layer.feature));
+        }
+      });
+    }
+
+    document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+      detail: { mode: 'detail' },
+    }));
+  } finally {
+    isSwitchingMode = false;
   }
-
-  currentMode = 'detail';
-
-  // Load tiles for current view
-  await loadVisibleTiles();
-
-  document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
-    detail: { mode: 'detail' },
-  }));
 }
 
 /**
  * Switch from detail tiles back to base layer
  */
 async function switchToBaseMode() {
-  logger.log('[Koppen] Switching to base mode (1° layer)');
-
-  // Show base layer and hide detail layer
-  if (baseLayer) {
-    baseLayer.addTo(map);
+  // Prevent concurrent mode switches
+  if (isSwitchingMode) {
+    logger.log('[Koppen] Already switching mode, skipping');
+    return;
   }
-  if (detailLayer) {
-    map.removeLayer(detailLayer);
+  isSwitchingMode = true;
+
+  try {
+    logger.log('[Koppen] Switching to base mode (1° layer)');
+
+    // Show base layer and hide detail layer
+    if (baseLayer) {
+      baseLayer.addTo(map);
+      // Refresh styles on base layer to ensure consistency
+      baseLayer.eachLayer(layer => {
+        if (layer && layer.feature) {
+          layer.setStyle(getFeatureStyle(layer.feature));
+        }
+      });
+    }
+    if (detailLayer) {
+      map.removeLayer(detailLayer);
+    }
+
+    currentMode = 'base';
+
+    document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+      detail: { mode: 'base' },
+    }));
+  } finally {
+    isSwitchingMode = false;
   }
-
-  currentMode = 'base';
-
-  document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
-    detail: { mode: 'base' },
-  }));
 }
 
 /**
@@ -844,116 +936,129 @@ function hideLoadingIndicator() {
  * Load tiles visible in current viewport
  */
 async function loadVisibleTiles() {
-  const bounds = map.getBounds();
-  const visibleTiles = await getTilesForBounds(bounds);
-
-  logger.log(`[Koppen] Checking ${visibleTiles.length} tiles for current view`);
-  logger.log(`[Koppen] Map bounds: ${bounds.toBBoxString()}`);
-
-  // Filter out already loaded tiles
-  const tilesToLoad = visibleTiles.filter(tile => !loadedTileFiles.has(tile.file));
-
-  if (tilesToLoad.length === 0) {
-    logger.log('[Koppen] All visible tiles already loaded');
-    return; // All visible tiles already loaded
+  // Prevent concurrent tile loading
+  if (isLoadingTiles) {
+    logger.log('[Koppen] Already loading tiles, skipping');
+    return;
   }
+  isLoadingTiles = true;
 
-  logger.log(`[Koppen] Loading ${tilesToLoad.length} visible tiles`);
-  logger.log('[Koppen] Tiles to load:', tilesToLoad.map(t => t.file));
-  showLoadingIndicator(`Loading ${tilesToLoad.length} tiles...`);
+  try {
+    const bounds = map.getBounds();
+    const visibleTiles = await getTilesForBounds(bounds);
 
-  // Track layers before adding new data for style application
-  const layerCountBefore = detailLayer ? detailLayer.getLayers().length : 0;
+    logger.log(`[Koppen] Checking ${visibleTiles.length} tiles for current view`);
+    logger.log(`[Koppen] Map bounds: ${bounds.toBBoxString()}`);
 
-  // Load all visible tiles in parallel
-  const tilePromises = tilesToLoad.map(async (tile) => {
-    try {
-      const geojson = await loadTile(tile.file);
+    // Filter out already loaded tiles
+    const tilesToLoad = visibleTiles.filter(tile => !loadedTileFiles.has(tile.file));
 
-      // Store original unclassified features for reclassification
-      loadedTileFeatures.set(tile.file, geojson.features);
+    if (tilesToLoad.length === 0) {
+      logger.log('[Koppen] All visible tiles already loaded');
+      return; // All visible tiles already loaded
+    }
 
-      // Classify tile features using CURRENT thresholds (not default)
-      const classifiedTileFeatures = classifyFeatures(geojson.features, currentThresholds);
+    logger.log(`[Koppen] Loading ${tilesToLoad.length} visible tiles`);
+    logger.log('[Koppen] Tiles to load:', tilesToLoad.map(t => t.file));
+    showLoadingIndicator(`Loading ${tilesToLoad.length} tiles...`);
 
-      logger.log(`[Koppen] Tile ${tile.file} - Sample feature:`, {
-        climateType: classifiedTileFeatures[0]?.properties.climate_type,
-        classifiedType: classifiedTileFeatures[0]?.properties.classifiedType,
-        classified: classifiedTileFeatures[0]?.properties.classified,
-        hasColor: !!classifiedTileFeatures[0]?.properties.climate_color,
-      });
+    // Track newly added layers explicitly to avoid relying on array ordering
+    const newlyAddedLayers = [];
 
-      // Add to detail layer
-      if (detailLayer) {
-        detailLayer.addData({
-          type: 'FeatureCollection',
-          features: classifiedTileFeatures,
+    // Load all visible tiles in parallel
+    const tilePromises = tilesToLoad.map(async (tile) => {
+      try {
+        const geojson = await loadTile(tile.file);
+
+        // Store original unclassified features for reclassification
+        loadedTileFeatures.set(tile.file, geojson.features);
+
+        // Classify tile features based on current mode
+        let classifiedTileFeatures;
+        if (classificationMode === 'custom' && customRulesEngine) {
+          // Use custom rules engine - returns {classified, unclassified}
+          const result = customRulesEngine.classifyAll(geojson.features);
+          classifiedTileFeatures = [...result.classified, ...result.unclassified];
+        } else {
+          // Use Köppen classification with current thresholds
+          classifiedTileFeatures = classifyFeatures(geojson.features, currentThresholds);
+        }
+
+        logger.log(`[Koppen] Tile ${tile.file} - Sample feature (mode: ${classificationMode}):`, {
+          climateType: classifiedTileFeatures[0]?.properties.climate_type,
+          classifiedType: classifiedTileFeatures[0]?.properties.classifiedType,
+          classified: classifiedTileFeatures[0]?.properties.classified,
+          hasColor: !!classifiedTileFeatures[0]?.properties.climate_color,
         });
+
+        // Mark as loaded BEFORE adding to layer to prevent race condition
+        loadedTileFiles.add(tile.file);
+
+        // Add to detail layer and track the new layers
+        if (detailLayer) {
+          const layerCountBefore = detailLayer.getLayers().length;
+          detailLayer.addData({
+            type: 'FeatureCollection',
+            features: classifiedTileFeatures,
+          });
+          // Capture newly added layers
+          const allLayers = detailLayer.getLayers();
+          for (let i = layerCountBefore; i < allLayers.length; i++) {
+            newlyAddedLayers.push(allLayers[i]);
+          }
+        }
+
+        return classifiedTileFeatures.length;
+      } catch (error) {
+        console.error(`[Koppen] Failed to load tile ${tile.file}:`, error);
+        return 0;
       }
+    });
 
-      // Mark as loaded
-      loadedTileFiles.add(tile.file);
+    const counts = await Promise.all(tilePromises);
+    const totalFeatures = counts.reduce((sum, count) => sum + count, 0);
 
-      return classifiedTileFeatures.length;
-    } catch (error) {
-      console.error(`[Koppen] Failed to load tile ${tile.file}:`, error);
-      return 0;
-    }
-  });
+    hideLoadingIndicator();
 
-  const counts = await Promise.all(tilePromises);
-  const totalFeatures = counts.reduce((sum, count) => sum + count, 0);
+    logger.log(`[Koppen] Loaded ${totalFeatures} features from ${tilesToLoad.length} tiles`);
+    logger.log(`[Koppen] Total tiles loaded: ${loadedTileFiles.size}`);
 
-  hideLoadingIndicator();
+    // Apply styles to ALL newly added layers to ensure consistency
+    // This handles both initial styling and any active filter
+    if (newlyAddedLayers.length > 0) {
+      logger.log(`[Koppen] Applying styles to ${newlyAddedLayers.length} newly added layers`);
 
-  logger.log(`[Koppen] Loaded ${totalFeatures} features from ${tilesToLoad.length} tiles`);
-  logger.log(`[Koppen] Total tiles loaded: ${loadedTileFiles.size}`);
-
-  // CRITICAL FIX: Explicitly apply styles to ALL newly added layers
-  // This ensures consistent opacity regardless of Leaflet's internal style caching
-  if (detailLayer && totalFeatures > 0) {
-    const allLayers = detailLayer.getLayers();
-    const newLayerCount = allLayers.length - layerCountBefore;
-
-    logger.log(`[Koppen] Applying styles to ${newLayerCount} newly added layers`);
-
-    // Apply styles to new layers (those added after layerCountBefore)
-    for (let i = layerCountBefore; i < allLayers.length; i++) {
-      const layer = allLayers[i];
-      if (layer && layer.feature) {
-        const style = getFeatureStyle(layer.feature);
-        layer.setStyle(style);
-      }
-    }
-
-    // If there's an active filter, also apply filter styling
-    if (activeFilter) {
-      logger.log(`[Koppen] Reapplying filter (${activeFilter}) to newly loaded tiles`);
-      for (let i = layerCountBefore; i < allLayers.length; i++) {
-        const layer = allLayers[i];
+      for (const layer of newlyAddedLayers) {
         if (layer && layer.feature) {
-          const featureType = layer.feature.properties.climate_type || layer.feature.properties.classifiedType;
-          const isMatch = featureType === activeFilter;
-          if (!isMatch) {
-            layer.setStyle(getFeatureStyle(layer.feature));
+          const style = getFeatureStyle(layer.feature);
+          layer.setStyle(style);
+
+          // Bring matching filter layers to front
+          if (activeFilter) {
+            const featureType = layer.feature.properties.climate_type || layer.feature.properties.classifiedType;
+            if (featureType === activeFilter) {
+              layer.bringToFront();
+            }
           }
         }
       }
+
+      // Keep selected layer on top
+      if (selectedLayer) {
+        selectedLayer.bringToFront();
+      }
     }
 
-    // Keep selected layer on top
-    if (selectedLayer) {
-      selectedLayer.bringToFront();
-    }
+    document.dispatchEvent(new CustomEvent('koppen:tiles-loaded', {
+      detail: {
+        tilesLoaded: tilesToLoad.length,
+        totalTiles: loadedTileFiles.size,
+        features: totalFeatures,
+      },
+    }));
+  } finally {
+    isLoadingTiles = false;
   }
-
-  document.dispatchEvent(new CustomEvent('koppen:tiles-loaded', {
-    detail: {
-      tilesLoaded: tilesToLoad.length,
-      totalTiles: loadedTileFiles.size,
-      features: totalFeatures,
-    },
-  }));
 }
 
 /**
@@ -972,7 +1077,7 @@ export function reclassifyWithCustomRules(engine) {
 
   logger.log('[Koppen] Reclassifying with custom rules...');
 
-  // Get original features to reclassify
+  // Get original features to reclassify for the currently visible layer
   let featuresToClassify = [];
 
   if (currentMode === 'base' && originalBaseFeatures) {
@@ -1023,6 +1128,38 @@ export function reclassifyWithCustomRules(engine) {
         click: onFeatureClick,
       });
     });
+  }
+
+  // ALSO reclassify cached detail tiles when in base mode so they're ready when user zooms in
+  if (currentMode === 'base' && detailLayer && loadedTileFeatures.size > 0) {
+    logger.log(`[Koppen] Also reclassifying ${loadedTileFeatures.size} cached detail tiles with custom rules`);
+
+    // Collect all detail features
+    const detailFeaturesToClassify = [];
+    for (const [, features] of loadedTileFeatures) {
+      detailFeaturesToClassify.push(...features);
+    }
+
+    // Classify with custom rules
+    const detailResult = engine.classifyAll(detailFeaturesToClassify);
+    const allDetailFeatures = [...detailResult.classified, ...detailResult.unclassified];
+
+    // Update detail layer (even though it's not visible)
+    detailLayer.clearLayers();
+    detailLayer.addData({
+      type: 'FeatureCollection',
+      features: allDetailFeatures,
+    });
+
+    detailLayer.eachLayer(layer => {
+      layer.on({
+        mouseover: onFeatureHover,
+        mouseout: onFeatureLeave,
+        click: onFeatureClick,
+      });
+    });
+
+    logger.log(`[Koppen] Cached detail tiles reclassified with custom rules: ${allDetailFeatures.length} features`);
   }
 
   // Store classified features
