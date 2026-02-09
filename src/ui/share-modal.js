@@ -97,8 +97,9 @@ function createSocialButton({ platform, label, icon, url }) {
  * Render modal content
  * @param {string} url - Shareable URL
  * @param {number} urlSize - URL size in characters
+ * @param {boolean} isCustomRules - Whether this is a custom rules classification
  */
-function renderContent(url, urlSize) {
+function renderContent(url, urlSize, isCustomRules = false) {
   if (!modalElement) return;
 
   const content = modalElement.querySelector('.share-modal__content');
@@ -135,7 +136,13 @@ function renderContent(url, urlSize) {
 
   const description = document.createElement('p');
   description.className = 'share-modal__description';
-  description.textContent = 'Copy the link below to share your custom classification. Anyone with this link can view and modify your settings.';
+
+  // Different description for custom rules vs threshold modifications
+  if (isCustomRules) {
+    description.textContent = 'Copy the link below to share your custom classification system. Anyone with this link can view your categories, rules, and classification logic.';
+  } else {
+    description.textContent = 'Copy the link below to share your modified Köppen classification. Anyone with this link can view and adjust your threshold settings.';
+  }
 
   // URL container
   const urlContainer = document.createElement('div');
@@ -167,13 +174,17 @@ function renderContent(url, urlSize) {
   const meta = document.createElement('div');
   meta.className = 'share-modal__meta';
 
+  // Different limits for custom rules vs threshold modifications
+  const maxLength = isCustomRules ? 8000 : 2000;
+  const warnThreshold = isCustomRules ? 6000 : 1500;
+
   const metaItem = document.createElement('span');
   metaItem.className = 'share-modal__meta-item';
-  metaItem.textContent = `URL Size: ${urlSize} / 2000 characters`;
+  metaItem.textContent = `URL Size: ${urlSize} / ${maxLength} characters`;
 
   meta.appendChild(metaItem);
 
-  if (urlSize > 1500) {
+  if (urlSize > warnThreshold) {
     const warning = document.createElement('span');
     warning.className = 'share-modal__warning';
     warning.textContent = '⚠️ URL is getting long';
@@ -324,16 +335,21 @@ function showCopyError() {
 
 /**
  * Open share modal with classification state
+ * Supports both threshold modifications and custom rules
  * @param {Object} state - Classification state
  * @param {string} state.name - Classification name
- * @param {Object} state.thresholds - Threshold values
+ * @param {Object} [state.thresholds] - Threshold values (Köppen mode)
+ * @param {Object} [state.customRules] - Custom rules engine JSON (custom mode)
  */
 export async function open(state) {
   if (isOpen) return;
 
   try {
-    // Generate shareable URL
-    const url = generateURL(state);
+    // Detect mode
+    const isCustomRules = state?.customRules && state.customRules.categories;
+
+    // Generate shareable URL (allow longer URLs for custom rules)
+    const url = generateURL(state, { allowLongURL: isCustomRules });
     const urlSize = url.length;
 
     // Create modal if doesn't exist
@@ -343,7 +359,7 @@ export async function open(state) {
     }
 
     // Render content
-    renderContent(url, urlSize);
+    renderContent(url, urlSize, isCustomRules);
     currentURL = url;
 
     // Show modal

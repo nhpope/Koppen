@@ -79,6 +79,32 @@ function setupEventListeners() {
   };
   document.addEventListener('koppen:fork-requested', forkHandler);
   eventListeners.push({ event: 'koppen:fork-requested', handler: forkHandler });
+
+  // Import custom rules from URL (for shared links)
+  const importCustomRulesHandler = (e) => {
+    const { customRules, fromURL } = e.detail || {};
+    if (customRules && fromURL && customRulesEngine) {
+      try {
+        // Import the rules into the current engine
+        const imported = CustomRulesEngine.fromJSON(customRules);
+        customRulesEngine = imported;
+
+        // Update the category manager
+        if (categoryManager) {
+          categoryManager.updateEngine(customRulesEngine);
+        }
+
+        // Render the updated UI
+        render();
+
+        logger.log('[Koppen] Imported custom rules from URL');
+      } catch (error) {
+        logger.error('[Koppen] Failed to import custom rules from URL:', error);
+      }
+    }
+  };
+  document.addEventListener('koppen:import-custom-rules', importCustomRulesHandler);
+  eventListeners.push({ event: 'koppen:import-custom-rules', handler: importCustomRulesHandler });
 }
 
 /**
@@ -164,10 +190,19 @@ function createHeader() {
   shareBtn.addEventListener('click', () => {
     // Get current classification state
     const name = nameInput.value || 'My Classification';
-    const thresholds = thresholdSliders.getAllValues();
 
-    // Open share modal
-    shareModal.open({ name, thresholds });
+    // Check classification mode and pass appropriate data
+    if (classificationMode === 'custom' && customRulesEngine) {
+      // Custom rules mode - pass the rules engine data
+      shareModal.open({
+        name,
+        customRules: customRulesEngine.toJSON(),
+      });
+    } else {
+      // Köppen threshold mode - pass thresholds
+      const thresholds = thresholdSliders.getAllValues();
+      shareModal.open({ name, thresholds });
+    }
   });
 
   header.appendChild(shareBtn);

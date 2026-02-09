@@ -249,8 +249,54 @@ async function restoreFromURL() {
   if (state) {
     logger.log('[Koppen] Restoring state from URL');
 
-    // Apply thresholds if present
-    if (state.thresholds) {
+    // Check if this is a custom rules classification
+    if (state.mode === 'custom' && state.customRules) {
+      // Custom rules mode
+      logger.log('[Koppen] Restoring custom rules classification');
+
+      // Fire rules-loaded event for shared info bar
+      document.dispatchEvent(new CustomEvent('koppen:rules-loaded', {
+        detail: {
+          name: state.name || 'Shared Classification',
+          customRules: state.customRules,
+          source: state.metadata?.source || 'url',
+        },
+      }));
+
+      // Open builder panel
+      app.modules.builder.open();
+
+      // Wait for builder to initialize, then start from scratch
+      setTimeout(() => {
+        // Trigger "Start from Scratch" to enter custom rules mode
+        const scratchBtn = document.getElementById('start-from-scratch');
+        if (scratchBtn) {
+          scratchBtn.click();
+
+          // Wait for custom rules mode to initialize, then load the rules
+          setTimeout(() => {
+            // Set classification name
+            const nameInput = document.getElementById('classification-name');
+            if (nameInput && state.name) {
+              nameInput.value = state.name;
+            }
+
+            // Load custom rules into the engine
+            // Fire import event with the custom rules data
+            document.dispatchEvent(new CustomEvent('koppen:import-custom-rules', {
+              detail: {
+                customRules: state.customRules,
+                fromURL: true,
+              },
+            }));
+
+            logger.log('[Koppen] Loaded custom rules classification from URL');
+          }, 500);
+        }
+      }, 300);
+    }
+    // Apply thresholds if present (threshold modification mode)
+    else if (state.thresholds) {
       // Fire rules-loaded event for shared info bar
       document.dispatchEvent(new CustomEvent('koppen:rules-loaded', {
         detail: {
