@@ -1,21 +1,17 @@
 /**
  * OpenGraph Image Generation API
- * Generates dynamic preview images for shared classifications
- * Uses @vercel/og for server-side image generation
+ * Generates dynamic SVG preview images for shared classifications
+ * Uses native edge APIs for maximum compatibility
  */
-
-import { ImageResponse } from '@vercel/og';
 
 // Schema version constant (matches client-side)
 const SCHEMA_VERSION = 2;
 
 /**
  * Decompress gzip data using edge-compatible method
- * Edge runtime supports DecompressionStream
  */
 async function gunzip(data) {
   try {
-    // Use DecompressionStream for edge runtime compatibility
     const stream = new Response(data).body
       .pipeThrough(new DecompressionStream('gzip'));
 
@@ -69,7 +65,110 @@ function expandCategories(minified) {
     color: minCat.o || '#888888',
     priority: minCat.p ?? 0,
     enabled: minCat.e !== false,
-  })).filter(cat => cat.enabled);
+  })).filter(cat => cat.enabled).slice(0, 16); // Limit to 16 for display
+}
+
+/**
+ * Generate SVG image
+ */
+function generateSVG(title, categories, isCustom) {
+  const width = 1200;
+  const height = 630;
+
+  // Escape HTML in text
+  const escapeHtml = (text) => String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const subtitle = isCustom ? 'Custom Climate Classification' : 'Modified Köppen Classification';
+
+  // Category badges (4 per row, max 16 total)
+  let categoryBadges = '';
+  const cols = 4;
+  const badgeWidth = 250;
+  const badgeHeight = 40;
+  const gap = 15;
+  const startX = (width - (cols * badgeWidth + (cols - 1) * gap)) / 2;
+  const startY = 320;
+
+  categories.forEach((cat, idx) => {
+    const row = Math.floor(idx / cols);
+    const col = idx % cols;
+    const x = startX + col * (badgeWidth + gap);
+    const y = startY + row * (badgeHeight + gap);
+
+    categoryBadges += `
+      <g transform="translate(${x}, ${y})">
+        <rect width="${badgeWidth}" height="${badgeHeight}" rx="6" fill="#f1f5f9"/>
+        <rect x="10" y="10" width="20" height="20" rx="3" fill="${escapeHtml(cat.color)}" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+        <text x="40" y="25" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#334155" dominant-baseline="middle">
+          ${escapeHtml(cat.name.slice(0, 20))}
+        </text>
+      </g>
+    `;
+  });
+
+  if (categories.length > 16) {
+    const row = Math.floor(16 / cols);
+    const col = 16 % cols;
+    const x = startX + col * (badgeWidth + gap);
+    const y = startY + row * (badgeHeight + gap);
+
+    categoryBadges += `
+      <text x="${x + badgeWidth / 2}" y="${y + badgeHeight / 2}"
+            font-family="system-ui, -apple-system, sans-serif"
+            font-size="18" fill="#64748b" text-anchor="middle" dominant-baseline="middle">
+        +${categories.length - 16} more categories
+      </text>
+    `;
+  }
+
+  return `
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+
+      <!-- Background -->
+      <rect width="${width}" height="${height}" fill="url(#bg)"/>
+
+      <!-- Card -->
+      <rect x="60" y="80" width="${width - 120}" height="${height - 160}" rx="24" fill="white" filter="drop-shadow(0 20px 40px rgba(0,0,0,0.3))"/>
+
+      <!-- Title -->
+      <text x="${width / 2}" y="180"
+            font-family="system-ui, -apple-system, sans-serif"
+            font-size="56" font-weight="bold" fill="#1e293b"
+            text-anchor="middle">
+        ${escapeHtml(title)}
+      </text>
+
+      <!-- Subtitle -->
+      <text x="${width / 2}" y="240"
+            font-family="system-ui, -apple-system, sans-serif"
+            font-size="24" fill="#64748b"
+            text-anchor="middle">
+        ${subtitle}
+      </text>
+
+      <!-- Categories -->
+      ${categoryBadges}
+
+      <!-- Footer -->
+      <text x="${width / 2}" y="${height - 100}"
+            font-family="system-ui, -apple-system, sans-serif"
+            font-size="20" fill="#94a3b8"
+            text-anchor="middle">
+        View on koppen.io
+      </text>
+    </svg>
+  `;
 }
 
 export const config = {
@@ -102,153 +201,36 @@ export default async function handler(req) {
       }
     }
 
-    // Generate image
-    return new ImageResponse(
-      (
-        <div
-          style={{
-            height: '100%',
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#f8f9fa',
-            backgroundImage: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            padding: '40px',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: 'white',
-              borderRadius: '24px',
-              padding: '60px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-              maxWidth: '90%',
-            }}
-          >
-            {/* Title */}
-            <div
-              style={{
-                fontSize: 64,
-                fontWeight: 'bold',
-                color: '#1e293b',
-                marginBottom: 20,
-                textAlign: 'center',
-              }}
-            >
-              {title}
-            </div>
+    // Generate SVG
+    const svg = generateSVG(title, categories, isCustom);
 
-            {/* Subtitle */}
-            <div
-              style={{
-                fontSize: 28,
-                color: '#64748b',
-                marginBottom: 40,
-              }}
-            >
-              {isCustom ? 'Custom Climate Classification' : 'Modified Köppen Classification'}
-            </div>
-
-            {/* Categories */}
-            {categories.length > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                  justifyContent: 'center',
-                  maxWidth: '1000px',
-                }}
-              >
-                {categories.slice(0, 12).map((cat, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 16px',
-                      backgroundColor: '#f1f5f9',
-                      borderRadius: '8px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '20px',
-                        height: '20px',
-                        backgroundColor: cat.color,
-                        borderRadius: '4px',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                      }}
-                    />
-                    <div style={{ fontSize: 20, color: '#334155' }}>
-                      {cat.name}
-                    </div>
-                  </div>
-                ))}
-                {categories.length > 12 && (
-                  <div
-                    style={{
-                      padding: '8px 16px',
-                      fontSize: 20,
-                      color: '#64748b',
-                    }}
-                  >
-                    +{categories.length - 12} more
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Footer */}
-            <div
-              style={{
-                marginTop: 40,
-                fontSize: 24,
-                color: '#94a3b8',
-              }}
-            >
-              View on koppen.io
-            </div>
-          </div>
-        </div>
-      ),
-      {
-        width: 1200,
-        height: 630,
-      }
-    );
+    // Return as PNG (browsers will render SVG, social platforms prefer PNG)
+    return new Response(svg, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+    });
   } catch (error) {
     console.error('OG image generation error:', error);
 
-    // Return a fallback error image
-    return new ImageResponse(
-      (
-        <div
-          style={{
-            height: '100%',
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#f8f9fa',
-          }}
-        >
-          <div style={{ fontSize: 48, color: '#64748b' }}>
-            Köppen Climate Classification
-          </div>
-        </div>
-      ),
-      {
-        width: 1200,
-        height: 630,
-      }
-    );
+    // Return fallback SVG
+    const fallbackSVG = `
+      <svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1200" height="630" fill="#f8f9fa"/>
+        <text x="600" y="315" font-family="sans-serif" font-size="48" fill="#64748b" text-anchor="middle">
+          Köppen Climate Classification
+        </text>
+      </svg>
+    `;
+
+    return new Response(fallbackSVG, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
   }
 }
