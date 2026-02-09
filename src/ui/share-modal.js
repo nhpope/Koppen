@@ -202,8 +202,10 @@ function renderContent(url, urlSize, isCustomRules = false) {
   const socialButtons = document.createElement('div');
   socialButtons.className = 'share-modal__social-buttons';
 
-  // Share text for social posts
-  const shareText = 'Check out this custom Köppen climate classification!';
+  // Share text for social posts - different for custom vs modified Köppen
+  const shareText = isCustomRules
+    ? 'Check out this custom climate classification I made!'
+    : 'Check out this custom Köppen classification!';
 
   // Twitter/X
   const twitterBtn = createSocialButton({
