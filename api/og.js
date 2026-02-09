@@ -1,46 +1,30 @@
 /**
  * OpenGraph Image Generation API
- * Generates dynamic SVG preview images for shared classifications
- * Uses native edge APIs for maximum compatibility
+ * Generates dynamic PNG preview images for shared classifications
+ * Uses sharp for SVG to PNG conversion
  */
+
+import sharp from 'sharp';
+import { gunzipSync } from 'zlib';
 
 // Schema version constant (matches client-side)
 const SCHEMA_VERSION = 2;
 
 /**
- * Decompress gzip data using edge-compatible method
- */
-async function gunzip(data) {
-  try {
-    const stream = new Response(data).body
-      .pipeThrough(new DecompressionStream('gzip'));
-
-    const decompressed = await new Response(stream).arrayBuffer();
-    return new TextDecoder().decode(decompressed);
-  } catch (error) {
-    console.error('Decompression failed:', error);
-    throw error;
-  }
-}
-
-/**
  * Decode URL parameter to get classification state
  */
-async function decodeState(encoded) {
+function decodeState(encoded) {
   try {
     if (!encoded) return null;
 
     // Decode base64
-    const decoded = Uint8Array.from(
-      atob(decodeURIComponent(encoded)),
-      c => c.charCodeAt(0)
-    );
+    const decoded = Buffer.from(decodeURIComponent(encoded), 'base64');
 
     // Decompress with gzip
-    const decompressed = await gunzip(decoded);
+    const decompressed = gunzipSync(decoded);
 
     // Parse JSON
-    const minimalState = JSON.parse(decompressed);
+    const minimalState = JSON.parse(decompressed.toString());
 
     // Validate schema version
     if (minimalState.v !== 1 && minimalState.v !== 2) {
@@ -171,11 +155,7 @@ function generateSVG(title, categories, isCustom) {
   `;
 }
 
-export const config = {
-  runtime: 'edge',
-};
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   try {
     const { searchParams } = new URL(req.url);
     const encoded = searchParams.get('s');
@@ -187,7 +167,7 @@ export default async function handler(req) {
 
     // Decode if state parameter exists
     if (encoded) {
-      const state = await decodeState(encoded);
+      const state = decodeState(encoded);
 
       if (state) {
         title = state.n || 'Custom Classification';
@@ -204,18 +184,19 @@ export default async function handler(req) {
     // Generate SVG
     const svg = generateSVG(title, categories, isCustom);
 
-    // Return as PNG (browsers will render SVG, social platforms prefer PNG)
-    return new Response(svg, {
-      status: 200,
-      headers: {
-        'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-    });
+    // Convert SVG to PNG using sharp
+    const pngBuffer = await sharp(Buffer.from(svg))
+      .png()
+      .toBuffer();
+
+    // Return as PNG
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(pngBuffer);
   } catch (error) {
     console.error('OG image generation error:', error);
 
-    // Return fallback SVG
+    // Return fallback SVG converted to PNG
     const fallbackSVG = `
       <svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
         <rect width="1200" height="630" fill="#f8f9fa"/>
@@ -225,12 +206,18 @@ export default async function handler(req) {
       </svg>
     `;
 
-    return new Response(fallbackSVG, {
-      status: 200,
-      headers: {
-        'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'public, max-age=3600',
-      },
-    });
+    try {
+      const pngBuffer = await sharp(Buffer.from(fallbackSVG))
+        .png()
+        .toBuffer();
+
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(pngBuffer);
+    } catch {
+      // Ultimate fallback - just send the SVG
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.send(fallbackSVG);
+    }
   }
 }
