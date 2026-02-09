@@ -5,23 +5,43 @@
  */
 
 import { ImageResponse } from '@vercel/og';
-import pako from 'pako';
 
 // Schema version constant (matches client-side)
 const SCHEMA_VERSION = 2;
 
 /**
+ * Decompress gzip data using edge-compatible method
+ * Edge runtime supports DecompressionStream
+ */
+async function gunzip(data) {
+  try {
+    // Use DecompressionStream for edge runtime compatibility
+    const stream = new Response(data).body
+      .pipeThrough(new DecompressionStream('gzip'));
+
+    const decompressed = await new Response(stream).arrayBuffer();
+    return new TextDecoder().decode(decompressed);
+  } catch (error) {
+    console.error('Decompression failed:', error);
+    throw error;
+  }
+}
+
+/**
  * Decode URL parameter to get classification state
  */
-function decodeState(encoded) {
+async function decodeState(encoded) {
   try {
     if (!encoded) return null;
 
     // Decode base64
-    const decoded = Buffer.from(decodeURIComponent(encoded), 'base64');
+    const decoded = Uint8Array.from(
+      atob(decodeURIComponent(encoded)),
+      c => c.charCodeAt(0)
+    );
 
     // Decompress with gzip
-    const decompressed = pako.ungzip(decoded, { to: 'string' });
+    const decompressed = await gunzip(decoded);
 
     // Parse JSON
     const minimalState = JSON.parse(decompressed);
@@ -68,7 +88,7 @@ export default async function handler(req) {
 
     // Decode if state parameter exists
     if (encoded) {
-      const state = decodeState(encoded);
+      const state = await decodeState(encoded);
 
       if (state) {
         title = state.n || 'Custom Classification';
