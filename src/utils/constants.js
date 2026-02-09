@@ -10,10 +10,10 @@ export const CONSTANTS = {
   MAX_ZOOM: 10,
 
   // Data - Hybrid loading configuration
-  CLIMATE_DATA_URL: '/koppen/data/climate.topojson',
-  CLIMATE_BASE_LAYER_URL: '/koppen/data/climate-1deg.geojson',
-  CLIMATE_TILE_INDEX_URL: '/koppen/data/tile-index.json',
-  CLIMATE_DATA_DIR: '/koppen/data',
+  CLIMATE_DATA_URL: '/data/climate.topojson',
+  CLIMATE_BASE_LAYER_URL: '/data/climate-1deg.geojson',
+  CLIMATE_TILE_INDEX_URL: '/data/tile-index.json',
+  CLIMATE_DATA_DIR: '/data',
   GRID_RESOLUTION: 0.25,
   BASE_LAYER_RESOLUTION: 1.0,
 
