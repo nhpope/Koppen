@@ -30,3 +30,4 @@ test-results/
 
 # Compressed data (original uncompressed files are tracked)
 public/data/climate-1deg.geojson.gz
+.vercel
