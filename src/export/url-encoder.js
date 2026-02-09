@@ -13,10 +13,15 @@ import pako from 'pako';
 import { KOPPEN_PRESET } from '../climate/presets.js';
 
 // Schema version for forward compatibility
-const SCHEMA_VERSION = 1;
+// v1 = threshold modifications only
+// v2 = full custom rules support
+const SCHEMA_VERSION = 2;
 
 // Maximum URL length (conservative limit for cross-browser compatibility)
 const MAX_URL_LENGTH = 2000;
+
+// Extended limit for custom rules (some platforms support longer URLs)
+const MAX_URL_LENGTH_EXTENDED = 8000;
 
 /**
  * Sanitize string input to prevent XSS/injection
@@ -34,6 +39,111 @@ function sanitizeString(str, maxLength = 100) {
     .replace(/[\u0000-\u001F\u007F]/g, '')  // Remove control chars
     .trim()
     .slice(0, maxLength);
+}
+
+/**
+ * Generate a simple ID for categories/rules during decode
+ * @returns {string} Simple unique ID
+ */
+function generateId() {
+  return 'id_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+}
+
+/**
+ * Minify custom rules for URL encoding
+ * Uses single-letter keys to reduce size before compression
+ * @param {Object} customRules - Custom rules engine JSON (from toJSON())
+ * @returns {Object} Minified rules object
+ */
+function minifyCustomRules(customRules) {
+  if (!customRules || !customRules.categories) {
+    return null;
+  }
+
+  return {
+    c: customRules.categories.map(cat => {
+      const minCat = {
+        n: cat.name,        // name
+        o: cat.color,       // color (o for hue/colOr)
+      };
+
+      // Only include non-default values
+      if (cat.description) minCat.d = cat.description;
+      if (cat.priority !== 0 && cat.priority !== undefined) minCat.p = cat.priority;
+      if (cat.enabled === false) minCat.e = false;
+      if (cat.parentId) minCat.x = cat.parentId;
+
+      // Minify rules
+      if (cat.rules && cat.rules.length > 0) {
+        minCat.r = cat.rules.map(rule => {
+          const minRule = {
+            a: rule.parameter,  // a for pArameter
+            b: rule.operator,   // b for operator (op)
+            v: rule.value,      // v for value
+          };
+          return minRule;
+        });
+      }
+
+      return minCat;
+    }),
+
+    // Include custom parameters if present
+    ...(customRules.customParameters && customRules.customParameters.length > 0 ? {
+      q: customRules.customParameters.map(param => ({
+        i: param.id,
+        n: param.name,
+        f: param.formula,
+        ...(param.unit ? { u: param.unit } : {}),
+        ...(param.description ? { d: param.description } : {}),
+      })),
+    } : {}),
+  };
+}
+
+/**
+ * Expand minified custom rules back to full format
+ * @param {Object} minified - Minified rules from URL
+ * @returns {Object} Full custom rules JSON for CustomRulesEngine.fromJSON()
+ */
+function expandCustomRules(minified) {
+  if (!minified || !minified.c) {
+    return null;
+  }
+
+  return {
+    version: '1.0.0',
+    type: 'custom-rules',
+    categories: minified.c.map(minCat => ({
+      id: generateId(),
+      name: minCat.n || 'Unnamed',
+      color: minCat.o || '#888888',
+      description: minCat.d || '',
+      priority: minCat.p ?? 0,
+      enabled: minCat.e !== false,
+      parentId: minCat.x || null,
+      children: [],
+      rules: (minCat.r || []).map(minRule => ({
+        id: generateId(),
+        parameter: minRule.a,
+        operator: minRule.b,
+        value: minRule.v,
+      })),
+    })),
+
+    // Expand custom parameters if present
+    ...(minified.q ? {
+      customParameters: minified.q.map(p => ({
+        id: p.i || generateId(),
+        name: p.n,
+        formula: p.f,
+        unit: p.u || '',
+        description: p.d || '',
+        range: [0, 100],
+        step: 1,
+      })),
+    } : {}),
+  };
 }
 
 /**
@@ -80,24 +190,48 @@ function extractModifiedThresholds(thresholds) {
 
 /**
  * Generate shareable URL from classification state
+ * Supports both threshold modifications and full custom rules
  * @param {Object} state - Classification state
  * @param {string} state.name - Classification name
- * @param {Object} state.thresholds - Threshold values
+ * @param {Object} [state.thresholds] - Threshold values (for modified Köppen)
+ * @param {Object} [state.customRules] - Custom rules engine JSON (for custom classifications)
+ * @param {Object} [options] - Options
+ * @param {boolean} [options.allowLongURL=false] - Allow URLs up to 8000 chars (for custom rules)
  * @returns {string} Shareable URL
  * @throws {Error} If URL exceeds length limit or compression fails
  */
-export function generateURL(state) {
+export function generateURL(state, options = {}) {
   try {
+    const { allowLongURL = false } = options;
+    const maxLength = allowLongURL ? MAX_URL_LENGTH_EXTENDED : MAX_URL_LENGTH;
+
     // Sanitize inputs
     const name = sanitizeString(state?.name || 'Custom Classification', 50);
-    const thresholds = state?.thresholds || {};
 
-    // Create minimal state object (only modified thresholds)
-    const minimalState = {
-      v: SCHEMA_VERSION,  // Schema version
-      n: name,            // Name (shortened key)
-      t: extractModifiedThresholds(thresholds),  // Only modified thresholds
-    };
+    let minimalState;
+
+    // Check if this is a custom rules classification
+    if (state?.customRules && state.customRules.categories) {
+      // Custom rules mode - full classification system
+      const minifiedRules = minifyCustomRules(state.customRules);
+
+      minimalState = {
+        v: SCHEMA_VERSION,
+        m: 'c',              // mode: 'c' = custom rules
+        n: name,
+        r: minifiedRules,    // minified rules
+      };
+    } else {
+      // Threshold modification mode (existing behavior)
+      const thresholds = state?.thresholds || {};
+
+      minimalState = {
+        v: SCHEMA_VERSION,
+        m: 't',              // mode: 't' = threshold modifications
+        n: name,
+        t: extractModifiedThresholds(thresholds),
+      };
+    }
 
     // Convert to JSON
     const json = JSON.stringify(minimalState);
@@ -112,8 +246,11 @@ export function generateURL(state) {
     const url = `${window.location.origin}${window.location.pathname}?s=${encodeURIComponent(base64)}`;
 
     // Validate URL length
-    if (url.length > MAX_URL_LENGTH) {
-      throw new Error(`URL too long (${url.length} chars, max ${MAX_URL_LENGTH}). Try using fewer custom thresholds.`);
+    if (url.length > maxLength) {
+      const suggestion = state?.customRules
+        ? 'Try reducing the number of categories or rules.'
+        : 'Try using fewer custom thresholds.';
+      throw new Error(`URL too long (${url.length} chars, max ${maxLength}). ${suggestion}`);
     }
 
     return url;
@@ -127,6 +264,7 @@ export function generateURL(state) {
 
 /**
  * Decode URL and restore classification state
+ * Supports both threshold modifications (v1/v2 mode 't') and custom rules (v2 mode 'c')
  * @param {string} url - URL to decode (defaults to current URL)
  * @returns {Object|null} Decoded state or null if no state in URL
  * @throws {Error} If decoding fails or state is invalid
@@ -157,49 +295,69 @@ export function decodeURL(url = window.location.href) {
     // Parse JSON
     const minimalState = JSON.parse(decompressed);
 
-    // Validate schema version
-    if (minimalState.v !== SCHEMA_VERSION) {
+    // Validate schema version (support v1 and v2)
+    if (minimalState.v !== 1 && minimalState.v !== 2) {
       throw new Error(`Unsupported schema version: ${minimalState.v}`);
     }
 
-    // Restore full state by merging with Köppen preset
-    const fullThresholds = JSON.parse(JSON.stringify(KOPPEN_PRESET.thresholds));
+    // Determine mode (v1 is always threshold mode, v2 checks 'm' field)
+    const mode = minimalState.v === 1 ? 't' : (minimalState.m || 't');
 
-    // Merge modified thresholds
-    if (minimalState.t) {
-      Object.keys(minimalState.t).forEach((category) => {
-        if (!fullThresholds[category]) {
-          fullThresholds[category] = {};
-        }
+    if (mode === 'c' && minimalState.r) {
+      // Custom rules mode - expand and return custom rules
+      const expandedRules = expandCustomRules(minimalState.r);
 
-        Object.keys(minimalState.t[category]).forEach((key) => {
-          if (!fullThresholds[category][key]) {
-            // New threshold not in Köppen - create minimal config
-            fullThresholds[category][key] = {
-              value: minimalState.t[category][key].value,
-              unit: '',
-              description: '',
-              range: [0, 100],
-              step: 1,
-            };
-          } else {
-            // Update existing threshold value
-            fullThresholds[category][key].value = minimalState.t[category][key].value;
+      return {
+        name: sanitizeString(minimalState.n || 'Shared Classification', 50),
+        mode: 'custom',
+        customRules: expandedRules,
+        metadata: {
+          source: 'url',
+          loaded_at: new Date().toISOString(),
+          modified: false,
+        },
+      };
+    } else {
+      // Threshold modification mode (existing behavior)
+      const fullThresholds = JSON.parse(JSON.stringify(KOPPEN_PRESET.thresholds));
+
+      // Merge modified thresholds
+      if (minimalState.t) {
+        Object.keys(minimalState.t).forEach((category) => {
+          if (!fullThresholds[category]) {
+            fullThresholds[category] = {};
           }
-        });
-      });
-    }
 
-    // Return full state
-    return {
-      name: sanitizeString(minimalState.n || 'Shared Classification', 50),
-      thresholds: fullThresholds,
-      metadata: {
-        source: 'url',
-        loaded_at: new Date().toISOString(),
-        modified: false,
-      },
-    };
+          Object.keys(minimalState.t[category]).forEach((key) => {
+            if (!fullThresholds[category][key]) {
+              // New threshold not in Köppen - create minimal config
+              fullThresholds[category][key] = {
+                value: minimalState.t[category][key].value,
+                unit: '',
+                description: '',
+                range: [0, 100],
+                step: 1,
+              };
+            } else {
+              // Update existing threshold value
+              fullThresholds[category][key].value = minimalState.t[category][key].value;
+            }
+          });
+        });
+      }
+
+      // Return threshold state
+      return {
+        name: sanitizeString(minimalState.n || 'Shared Classification', 50),
+        mode: 'threshold',
+        thresholds: fullThresholds,
+        metadata: {
+          source: 'url',
+          loaded_at: new Date().toISOString(),
+          modified: false,
+        },
+      };
+    }
   } catch (error) {
     console.error('[Koppen] Failed to decode URL:', error);
     throw new Error(`Invalid share URL: ${error.message}`);
@@ -219,12 +377,40 @@ export function hasSharedState() {
  * Get estimated URL size for current state (before encoding)
  * Used for validation and user feedback
  * @param {Object} state - Classification state
+ * @param {Object} [options] - Options (passed to generateURL)
  * @returns {number} Estimated URL length in characters
  */
-export function estimateURLSize(state) {
+export function estimateURLSize(state, options = {}) {
   try {
-    return generateURL(state).length;
+    return generateURL(state, options).length;
   } catch {
     return -1;  // Error estimating size
   }
+}
+
+/**
+ * Generate shareable URL for custom rules classification
+ * Convenience wrapper for generateURL with custom rules
+ * @param {Object} customRulesEngine - CustomRulesEngine instance (must have toJSON method)
+ * @param {string} [name] - Classification name
+ * @returns {string} Shareable URL
+ */
+export function generateCustomRulesURL(customRulesEngine, name = 'Custom Classification') {
+  if (!customRulesEngine || typeof customRulesEngine.toJSON !== 'function') {
+    throw new Error('Invalid custom rules engine: must have toJSON method');
+  }
+
+  return generateURL({
+    name: name,
+    customRules: customRulesEngine.toJSON(),
+  }, { allowLongURL: true });
+}
+
+/**
+ * Check if decoded state is a custom rules classification
+ * @param {Object} decodedState - State from decodeURL
+ * @returns {boolean} True if custom rules mode
+ */
+export function isCustomRulesState(decodedState) {
+  return decodedState?.mode === 'custom' && decodedState?.customRules;
 }
