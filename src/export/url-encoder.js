@@ -274,7 +274,8 @@ export function generateURL(state, options = {}) {
     const base64 = btoa(String.fromCharCode.apply(null, compressed));
 
     // Create URL with encoded state
-    const url = `${window.location.origin}${window.location.pathname}?s=${encodeURIComponent(base64)}`;
+    // Use /share path for proper OG meta tag injection
+    const url = `${window.location.origin}/share?s=${encodeURIComponent(base64)}`;
 
     // Validate URL length
     if (url.length > maxLength) {

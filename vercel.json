@@ -4,10 +4,16 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/",
-      "destination": "/api/index"
+      "source": "/share",
+      "destination": "/api/share"
     }
   ],
+  "functions": {
+    "api/share.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
