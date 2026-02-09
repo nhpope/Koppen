@@ -3,10 +3,18 @@
  * Renders simplified world map with classification colors
  */
 
-import { createCanvas } from 'canvas';
+import { createCanvas, registerFont } from 'canvas';
 import { gunzipSync } from 'zlib';
 import fs from 'fs';
 import path from 'path';
+
+// Register font for text rendering
+try {
+  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'Inter.ttf');
+  registerFont(fontPath, { family: 'Inter' });
+} catch (error) {
+  console.log('Font registration failed, using default');
+}
 
 const SCHEMA_VERSION = 2;
 
@@ -169,21 +177,12 @@ function generateMapImage(title, categories) {
   roundRect(ctx, 40, 40, width - 80, 100, 12);
   ctx.fill();
 
-  // Try to render title - if fonts not available, skip it
-  try {
-    ctx.fillStyle = '#1e293b';
-    ctx.font = '48px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Test if font renders (measure text width)
-    const metrics = ctx.measureText(title);
-    if (metrics.width > 0) {
-      ctx.fillText(title, width / 2, 90);
-    }
-  } catch (error) {
-    console.log('Font rendering not available, showing map only');
-  }
+  // Render title
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 48px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, width / 2, 90);
 
   return canvas.toBuffer('image/png');
 }
