@@ -172,17 +172,16 @@ function generateMapImage(title, categories) {
     });
   }
 
-  // Title overlay with semi-transparent background
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  roundRect(ctx, 40, 40, width - 80, 100, 12);
+  // Add subtle watermark at bottom
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  roundRect(ctx, 20, height - 60, 200, 40, 8);
   ctx.fill();
 
-  // Render title
-  ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 48px Inter, sans-serif';
+  ctx.fillStyle = '#64748b';
+  ctx.font = '16px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(title, width / 2, 90);
+  ctx.fillText('koppen.io', 120, height - 40);
 
   return canvas.toBuffer('image/png');
 }
