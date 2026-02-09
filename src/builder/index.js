@@ -35,6 +35,9 @@ let currentClassification = null;
 let originalClassification = null; // Store original for comparison
 let _IS_FORK_MODE = false; // Reserved for future fork mode tracking
 
+// Pending custom rules import (for URL loading)
+let pendingCustomRulesImport = null;
+
 /**
  * Setup event listeners
  */
@@ -83,24 +86,10 @@ function setupEventListeners() {
   // Import custom rules from URL (for shared links)
   const importCustomRulesHandler = (e) => {
     const { customRules, fromURL } = e.detail || {};
-    if (customRules && fromURL && customRulesEngine) {
-      try {
-        // Import the rules into the current engine
-        const imported = CustomRulesEngine.fromJSON(customRules);
-        customRulesEngine = imported;
-
-        // Update the category manager
-        if (categoryManager) {
-          categoryManager.updateEngine(customRulesEngine);
-        }
-
-        // Render the updated UI
-        render();
-
-        logger.log('[Koppen] Imported custom rules from URL');
-      } catch (error) {
-        logger.error('[Koppen] Failed to import custom rules from URL:', error);
-      }
+    if (customRules && fromURL) {
+      // Store the rules to be imported when startFromScratch is called
+      pendingCustomRulesImport = customRules;
+      logger.log('[Koppen] Stored custom rules for import');
     }
   };
   document.addEventListener('koppen:import-custom-rules', importCustomRulesHandler);
@@ -456,8 +445,21 @@ function startFromScratch() {
     // Set mode to custom rules
     classificationMode = 'custom';
 
-    // Initialize empty custom rules engine
-    customRulesEngine = new CustomRulesEngine([]);
+    // Check if there are pending custom rules to import (from URL)
+    if (pendingCustomRulesImport) {
+      logger.log('[Koppen] Importing pending custom rules from URL');
+      try {
+        customRulesEngine = CustomRulesEngine.fromJSON(pendingCustomRulesImport);
+        pendingCustomRulesImport = null; // Clear after import
+      } catch (error) {
+        logger.error('[Koppen] Failed to import pending custom rules:', error);
+        // Fall back to empty engine
+        customRulesEngine = new CustomRulesEngine([]);
+      }
+    } else {
+      // Initialize empty custom rules engine
+      customRulesEngine = new CustomRulesEngine([]);
+    }
 
     // Clear content and render custom rules mode
     const content = builderPanel.querySelector('.builder-panel__content');

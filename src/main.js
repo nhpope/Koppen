@@ -266,32 +266,30 @@ async function restoreFromURL() {
       // Open builder panel
       app.modules.builder.open();
 
-      // Wait for builder to initialize, then start from scratch
+      // Wait for builder to initialize, then import and start from scratch
       setTimeout(() => {
-        // Trigger "Start from Scratch" to enter custom rules mode
+        // Fire import event FIRST to store the rules
+        document.dispatchEvent(new CustomEvent('koppen:import-custom-rules', {
+          detail: {
+            customRules: state.customRules,
+            fromURL: true,
+          },
+        }));
+
+        // Then trigger "Start from Scratch" which will check for pending import
         const scratchBtn = document.getElementById('start-from-scratch');
         if (scratchBtn) {
           scratchBtn.click();
 
-          // Wait for custom rules mode to initialize, then load the rules
+          // Set classification name after mode initializes
           setTimeout(() => {
-            // Set classification name
             const nameInput = document.getElementById('classification-name');
             if (nameInput && state.name) {
               nameInput.value = state.name;
             }
 
-            // Load custom rules into the engine
-            // Fire import event with the custom rules data
-            document.dispatchEvent(new CustomEvent('koppen:import-custom-rules', {
-              detail: {
-                customRules: state.customRules,
-                fromURL: true,
-              },
-            }));
-
             logger.log('[Koppen] Loaded custom rules classification from URL');
-          }, 500);
+          }, 200);
         }
       }, 300);
     }
