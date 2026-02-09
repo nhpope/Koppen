@@ -25,10 +25,25 @@ function loadBaseLayer() {
   if (cachedBaseLayer) return cachedBaseLayer;
 
   try {
-    const dataPath = path.join(process.cwd(), 'public', 'data', 'climate-1deg.geojson');
-    const geojson = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    cachedBaseLayer = geojson.features;
-    return cachedBaseLayer;
+    // Try multiple possible paths for Vercel deployment
+    const possiblePaths = [
+      path.join(process.cwd(), 'public', 'data', 'climate-1deg.geojson'),
+      path.join(process.cwd(), 'data', 'climate-1deg.geojson'),
+      path.join(__dirname, '..', 'public', 'data', 'climate-1deg.geojson'),
+      path.join(__dirname, '..', 'data', 'climate-1deg.geojson'),
+    ];
+
+    for (const dataPath of possiblePaths) {
+      if (fs.existsSync(dataPath)) {
+        const geojson = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+        cachedBaseLayer = geojson.features;
+        console.log(`Loaded base layer from ${dataPath}: ${cachedBaseLayer.length} features`);
+        return cachedBaseLayer;
+      }
+    }
+
+    console.error('Base layer not found in any expected location');
+    return [];
   } catch (error) {
     console.error('Failed to load base layer:', error);
     return [];
@@ -209,9 +224,11 @@ export default function handler(req, res) {
 
     if (stateParam) {
       const state = decodeState(stateParam);
+      console.log('Decoded state:', state ? 'success' : 'failed');
       if (state && state.m === 'c' && state.r) {
         title = state.n || 'Custom Classification';
         categories = expandCategories(state.r);
+        console.log(`Loaded ${categories.length} categories for classification`);
       }
     }
 
@@ -222,16 +239,24 @@ export default function handler(req, res) {
     res.send(png);
   } catch (error) {
     console.error('OG image error:', error);
+    console.error('Error stack:', error.stack);
 
-    // Fallback
+    // Fallback - simple colored rectangle to show something is working
     const canvas = createCanvas(1200, 630);
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#f8f9fa';
+
+    // Gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 1200, 630);
+    gradient.addColorStop(0, '#667eea');
+    gradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1200, 630);
-    ctx.fillStyle = '#64748b';
-    ctx.font = '48px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Koppen Climate Classification', 600, 315);
+
+    // White box
+    ctx.fillStyle = 'white';
+    ctx.fillRect(100, 200, 1000, 230);
+
+    // No text - just show the visual
 
     res.setHeader('Content-Type', 'image/png');
     res.send(canvas.toBuffer('image/png'));
