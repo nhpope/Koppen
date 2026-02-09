@@ -169,11 +169,21 @@ function generateMapImage(title, categories) {
   roundRect(ctx, 40, 40, width - 80, 100, 12);
   ctx.fill();
 
-  ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 48px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(title, width / 2, 90);
+  // Try to render title - if fonts not available, skip it
+  try {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = '48px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Test if font renders (measure text width)
+    const metrics = ctx.measureText(title);
+    if (metrics.width > 0) {
+      ctx.fillText(title, width / 2, 90);
+    }
+  } catch (error) {
+    console.log('Font rendering not available, showing map only');
+  }
 
   return canvas.toBuffer('image/png');
 }
