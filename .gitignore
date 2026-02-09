@@ -28,8 +28,5 @@ coverage/
 playwright-report/
 test-results/
 
-# Large generated data files (use CDN for production)
-public/data/climate-1deg.geojson
+# Compressed data (original uncompressed files are tracked)
 public/data/climate-1deg.geojson.gz
-public/data/tile-index.json
-public/data/tiles/
