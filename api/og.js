@@ -1,12 +1,31 @@
 /**
  * OpenGraph Image Generation API
- * Generates PNG preview images using node-canvas
+ * Renders simplified world map with classification colors
  */
 
 import { createCanvas } from 'canvas';
 import { gunzipSync } from 'zlib';
+import fs from 'fs';
+import path from 'path';
 
 const SCHEMA_VERSION = 2;
+
+// Cache base layer data to avoid repeated file reads
+let cachedBaseLayer = null;
+
+function loadBaseLayer() {
+  if (cachedBaseLayer) return cachedBaseLayer;
+
+  try {
+    const dataPath = path.join(process.cwd(), 'public', 'data', 'climate-1deg.geojson');
+    const geojson = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    cachedBaseLayer = geojson.features;
+    return cachedBaseLayer;
+  } catch (error) {
+    console.error('Failed to load base layer:', error);
+    return [];
+  }
+}
 
 function decodeState(encoded) {
   try {
@@ -17,108 +36,144 @@ function decodeState(encoded) {
     if (minimalState.v !== 1 && minimalState.v !== 2) return null;
     return minimalState;
   } catch (error) {
-    console.error('Failed to decode:', error);
     return null;
   }
 }
 
 function expandCategories(minified) {
   if (!minified || !minified.c) return [];
-  return minified.c.map(minCat => ({
+
+  // Two-pass expansion for parent-child relationships
+  const categories = minified.c.map(minCat => ({
     name: minCat.n || 'Unnamed',
     color: minCat.o || '#888888',
-  })).slice(0, 16);
+    priority: minCat.p ?? 0,
+    enabled: minCat.e !== false,
+    parentId: null,
+    rules: (minCat.r || []).map(minRule => ({
+      parameter: minRule.a,
+      operator: minRule.b,
+      value: minRule.v,
+    })),
+  }));
+
+  // Rebuild parent-child relationships using indices
+  minified.c.forEach((minCat, idx) => {
+    if (minCat.x !== undefined && minCat.x !== null) {
+      const parentIndex = minCat.x;
+      if (parentIndex >= 0 && parentIndex < categories.length) {
+        categories[idx].parentId = parentIndex;
+      }
+    }
+  });
+
+  return categories;
 }
 
-function generateImage(title, categories, isCustom) {
+// Simple parameter calculators for server-side classification
+const PARAMS = {
+  MAT: (props) => props.mat || 0,
+  Tmax: (props) => Math.max(...Array.from({length: 12}, (_, i) => props[`t${i+1}`] || 0)),
+  Tmin: (props) => Math.min(...Array.from({length: 12}, (_, i) => props[`t${i+1}`] || 0)),
+  MAP: (props) => props.map || 0,
+  Pdry: (props) => Math.min(...Array.from({length: 12}, (_, i) => props[`p${i+1}`] || 0)),
+  Pwet: (props) => Math.max(...Array.from({length: 12}, (_, i) => props[`p${i+1}`] || 0)),
+  AridityIndex: (props) => {
+    const mat = props.mat || 0;
+    const map = props.map || 0;
+    return map / (mat + 10);
+  },
+};
+
+function evaluateRule(rule, props) {
+  const paramValue = PARAMS[rule.parameter]?.(props);
+  if (paramValue === undefined) return false;
+
+  const { operator, value } = rule;
+
+  switch (operator) {
+    case '<': return paramValue < value;
+    case '<=': return paramValue <= value;
+    case '>': return paramValue > value;
+    case '>=': return paramValue >= value;
+    case '==': return Math.abs(paramValue - value) < 0.001;
+    case '!=': return Math.abs(paramValue - value) >= 0.001;
+    default: return false;
+  }
+}
+
+function classifyFeature(feature, categories) {
+  // Sort by priority (lower = higher priority)
+  const sorted = [...categories].sort((a, b) => a.priority - b.priority);
+
+  for (const category of sorted) {
+    if (!category.enabled) continue;
+
+    // Check parent first
+    if (category.parentId !== null && category.parentId >= 0) {
+      const parent = categories[category.parentId];
+      if (parent) {
+        const parentMatches = parent.rules.every(rule => evaluateRule(rule, feature.properties));
+        if (!parentMatches) continue;
+      }
+    }
+
+    // Check this category's rules
+    const matches = category.rules.every(rule => evaluateRule(rule, feature.properties));
+    if (matches) {
+      return category.color;
+    }
+  }
+
+  return null; // Unclassified
+}
+
+function generateMapImage(title, categories) {
   const width = 1200;
   const height = 630;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
 
-  // Background gradient
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#667eea');
-  gradient.addColorStop(1, '#764ba2');
-  ctx.fillStyle = gradient;
+  // Background
+  ctx.fillStyle = '#e5e7eb';
   ctx.fillRect(0, 0, width, height);
 
-  // White card with shadow effect
-  ctx.fillStyle = 'white';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-  ctx.shadowBlur = 40;
-  ctx.shadowOffsetY = 20;
-  roundRect(ctx, 60, 80, width - 120, height - 160, 24);
-  ctx.fill();
-  ctx.shadowColor = 'transparent';
+  // Load and render features
+  const features = loadBaseLayer();
 
-  // Title
-  ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 56px -apple-system, system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(title, width / 2, 180);
+  if (features.length > 0 && categories.length > 0) {
+    // Simple equirectangular projection
+    const lonToX = (lon) => ((lon + 180) / 360) * width;
+    const latToY = (lat) => ((90 - lat) / 180) * height;
 
-  // Subtitle
-  ctx.fillStyle = '#64748b';
-  ctx.font = '24px -apple-system, system-ui, sans-serif';
-  const subtitle = isCustom ? 'Custom Climate Classification' : 'Modified Köppen Classification';
-  ctx.fillText(subtitle, width / 2, 240);
+    features.forEach(feature => {
+      const color = classifyFeature(feature, categories);
+      if (color) {
+        const coords = feature.geometry.coordinates[0];
+        const [[lon, lat]] = coords;
 
-  // Categories (4 per row)
-  if (categories.length > 0) {
-    const cols = 4;
-    const badgeWidth = 250;
-    const badgeHeight = 40;
-    const gap = 15;
-    const startX = (width - (cols * badgeWidth + (cols - 1) * gap)) / 2;
-    const startY = 320;
+        // Approximate cell size (1°)
+        const x = lonToX(lon);
+        const y = latToY(lat);
+        const cellWidth = width / 360;
+        const cellHeight = height / 180;
 
-    ctx.font = '16px -apple-system, system-ui, sans-serif';
-    ctx.textAlign = 'left';
-
-    categories.forEach((cat, idx) => {
-      const row = Math.floor(idx / cols);
-      const col = idx % cols;
-      const x = startX + col * (badgeWidth + gap);
-      const y = startY + row * (badgeHeight + gap);
-
-      // Badge background
-      ctx.fillStyle = '#f1f5f9';
-      roundRect(ctx, x, y, badgeWidth, badgeHeight, 6);
-      ctx.fill();
-
-      // Color swatch
-      ctx.fillStyle = cat.color;
-      ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-      ctx.lineWidth = 1;
-      roundRect(ctx, x + 10, y + 10, 20, 20, 3);
-      ctx.fill();
-      ctx.stroke();
-
-      // Category name
-      ctx.fillStyle = '#334155';
-      ctx.fillText(cat.name.slice(0, 20), x + 40, y + 25);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, cellWidth, cellHeight);
+      }
     });
-
-    // Show "+X more" if over 16
-    if (categories.length > 16) {
-      const row = Math.floor(16 / cols);
-      const col = 16 % cols;
-      const x = startX + col * (badgeWidth + gap);
-      const y = startY + row * (badgeHeight + gap);
-
-      ctx.fillStyle = '#64748b';
-      ctx.textAlign = 'center';
-      ctx.fillText(`+${categories.length - 16} more`, x + badgeWidth / 2, y + badgeHeight / 2);
-    }
   }
 
-  // Footer
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '20px -apple-system, system-ui, sans-serif';
+  // Title overlay with semi-transparent background
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  roundRect(ctx, 40, 40, width - 80, 100, 12);
+  ctx.fill();
+
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 48px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('View on koppen.io', width / 2, height - 100);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, width / 2, 90);
 
   return canvas.toBuffer('image/png');
 }
@@ -141,23 +196,18 @@ export default function handler(req, res) {
   try {
     const { s: stateParam } = req.query;
 
-    let title = 'Köppen Climate Classification';
+    let title = 'Koppen Climate Classification';
     let categories = [];
-    let isCustom = false;
 
     if (stateParam) {
       const state = decodeState(stateParam);
-      if (state) {
+      if (state && state.m === 'c' && state.r) {
         title = state.n || 'Custom Classification';
-        const mode = state.v === 1 ? 't' : (state.m || 't');
-        if (mode === 'c' && state.r) {
-          isCustom = true;
-          categories = expandCategories(state.r);
-        }
+        categories = expandCategories(state.r);
       }
     }
 
-    const png = generateImage(title, categories, isCustom);
+    const png = generateMapImage(title, categories);
 
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -165,7 +215,7 @@ export default function handler(req, res) {
   } catch (error) {
     console.error('OG image error:', error);
 
-    // Fallback simple image
+    // Fallback
     const canvas = createCanvas(1200, 630);
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#f8f9fa';
@@ -173,7 +223,7 @@ export default function handler(req, res) {
     ctx.fillStyle = '#64748b';
     ctx.font = '48px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Köppen Climate Classification', 600, 315);
+    ctx.fillText('Koppen Climate Classification', 600, 315);
 
     res.setHeader('Content-Type', 'image/png');
     res.send(canvas.toBuffer('image/png'));
