@@ -4,9 +4,11 @@
  */
 
 import pngGenerator from './png-generator.js';
+import fullResExport from './full-res-export.js';
 import { generateFilename, downloadBlob } from './utils.js';
 import { exportJSON, importJSON } from './json-export.js';  // Story 6.5
 import logger from '../utils/logger.js';
+import { getFeatures, getClassificationMode } from '../map/climate-layer.js';
 
 let exportButton = null;
 let includeLegendCheckbox = null;
@@ -31,13 +33,32 @@ async function handleExport() {
     document.dispatchEvent(new CustomEvent('koppen:export-started'));
 
     // Get classification name for filename (default to 'koppen')
-    const classificationName = document.querySelector('[data-classification-name]')?.value || 'koppen';
+    const classificationName = document.querySelector('[data-classification-name]')?.value || document.getElementById('classification-name')?.value || 'koppen';
 
-    // Generate PNG
-    const { blob, duration } = await pngGenerator.generatePNG({
-      includeLegend: includeLegendCheckbox?.checked ?? true,
-      includeWatermark: true,
-    });
+    // Get all features and mode
+    const features = getFeatures();
+    const mode = getClassificationMode();
+    const isCustomMode = mode === 'custom';
+
+    let blob, duration;
+
+    // Use full-resolution export if features are available
+    if (features && features.length > 0 && includeLegendCheckbox?.checked) {
+      blob = await fullResExport.exportFullResolution({
+        features,
+        classificationName,
+        isCustomMode,
+      });
+      duration = 0; // Duration tracked in fullResExport
+    } else {
+      // Fallback to viewport screenshot
+      const result = await pngGenerator.generatePNG({
+        includeLegend: includeLegendCheckbox?.checked ?? true,
+        includeWatermark: true,
+      });
+      blob = result.blob;
+      duration = result.duration;
+    }
 
     // Download
     const filename = generateFilename(classificationName);
