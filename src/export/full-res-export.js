@@ -50,7 +50,14 @@ export async function exportFullResolution(options) {
   // Canvas dimensions
   const mapWidth = 2000;
   const mapHeight = 1200;
-  const legendHeight = 300;
+
+  // Calculate legend height based on category count
+  const categoryCount = legendData.length;
+  const cols = 6;
+  const rows = Math.ceil(categoryCount / cols);
+  const itemHeight = 35; // Reduced from 40
+  const legendHeight = 80 + (rows * itemHeight) + 40; // Title + items + padding
+
   const totalHeight = mapHeight + legendHeight;
 
   // Create canvas
@@ -130,7 +137,7 @@ function renderLegend(ctx, legendData, width, mapHeight, legendHeight, isCustomM
 
   // Title
   ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 24px sans-serif';
+  ctx.font = 'bold 26px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   const title = isCustomMode ? 'Custom Categories' : 'Climate Types';
@@ -138,43 +145,38 @@ function renderLegend(ctx, legendData, width, mapHeight, legendHeight, isCustomM
 
   if (!legendData || legendData.length === 0) return;
 
-  // Render categories in grid
+  // Render ALL categories in grid (no truncation)
   const cols = 6;
-  const itemWidth = (width - 100) / cols;
-  const itemHeight = 40;
-  const startX = 50;
-  const startY = legendY + 70;
+  const itemWidth = (width - 80) / cols; // Reduced margin
+  const itemHeight = 35; // Reduced from 40
+  const startX = 40; // Reduced from 50
+  const startY = legendY + 65; // Reduced top padding
 
-  ctx.font = '14px sans-serif';
+  ctx.font = '16px sans-serif'; // Increased from 14px
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
-  legendData.slice(0, 18).forEach((item, idx) => {
+  // Render all categories (no slice/limit)
+  legendData.forEach((item, idx) => {
     const col = idx % cols;
     const row = Math.floor(idx / cols);
     const x = startX + col * itemWidth;
     const y = startY + row * itemHeight;
 
-    // Color swatch
+    // Larger color swatch
     ctx.fillStyle = item.color;
-    ctx.fillRect(x, y - 8, 20, 16);
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y - 10, 24, 20); // Increased from 20x16
+    ctx.strokeRect(x, y - 10, 24, 20);
 
-    // Label
+    // Label with bigger font
     ctx.fillStyle = '#334155';
-    const label = item.name.slice(0, 20);
-    ctx.fillText(label, x + 28, y);
+    const label = item.name.slice(0, 22); // Slightly longer
+    ctx.fillText(label, x + 32, y);
   });
 
-  // Show count if more categories
-  if (legendData.length > 18) {
-    ctx.fillStyle = '#64748b';
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      `+ ${legendData.length - 18} more categories`,
-      width / 2,
-      startY + Math.ceil(18 / cols) * itemHeight + 10
-    );
-  }
+  logger.log(`[Koppen] Rendered ${legendData.length} legend categories`);
 }
 
 /**
