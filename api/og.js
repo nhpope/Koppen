@@ -174,7 +174,7 @@ function evaluateRule(rule, props, customParamMap) {
 }
 
 /**
- * Evaluate a simple math formula safely (no eval)
+ * Evaluate a simple math formula safely
  * Supports common patterns like: (A - B) / abs(C), A / B
  */
 function evaluateFormula(formula, props) {
@@ -187,14 +187,17 @@ function evaluateFormula(formula, props) {
       expr = expr.replace(new RegExp(`\\b${param}\\b`, 'g'), value);
     });
 
-    // Handle abs() function
-    expr = expr.replace(/abs\(([^)]+)\)/g, (match, inner) => {
-      return `Math.abs(${inner})`;
-    });
+    // Handle abs() function by evaluating it first
+    while (expr.includes('abs(')) {
+      expr = expr.replace(/abs\(([^)]+)\)/g, (match, inner) => {
+        // Recursively evaluate inner expression
+        const innerValue = Function('Math', `"use strict"; return (${inner})`)(Math);
+        return Math.abs(innerValue);
+      });
+    }
 
-    // Use Function constructor (safer than eval, still evaluates)
-    // Only parameters (numbers) remain in expr at this point
-    const result = Function(`"use strict"; return (${expr})`)();
+    // Use Function constructor with Math passed as parameter
+    const result = Function('Math', `"use strict"; return (${expr})`)(Math);
     return result;
   } catch (error) {
     console.error('Formula evaluation error:', formula, error);
