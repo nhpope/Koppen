@@ -21,6 +21,7 @@ import { showError, showConfirm } from '../ui/confirm-dialog.js';  // C.3: Repla
 
 let builderPanel = null;
 let isOpen = false;
+let isMinimized = false; // Track minimize state
 let dataLoaded = false;
 let eventListeners = []; // Track event listeners for cleanup
 
@@ -139,6 +140,17 @@ function createHeader() {
   title.className = 'builder-panel__title';
   title.textContent = 'Create Classification';
 
+  const buttonGroup = document.createElement('div');
+  buttonGroup.className = 'builder-panel__button-group';
+
+  const minimizeBtn = document.createElement('button');
+  minimizeBtn.className = 'builder-panel__minimize';
+  minimizeBtn.type = 'button';
+  minimizeBtn.setAttribute('aria-label', 'Minimize builder');
+  minimizeBtn.setAttribute('data-minimize-builder', '');
+  minimizeBtn.textContent = '−';
+  minimizeBtn.addEventListener('click', () => toggleMinimize());
+
   const closeBtn = document.createElement('button');
   closeBtn.className = 'builder-panel__close';
   closeBtn.type = 'button';
@@ -146,8 +158,20 @@ function createHeader() {
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', () => close());
 
+  buttonGroup.appendChild(minimizeBtn);
+  buttonGroup.appendChild(closeBtn);
+
   titleRow.appendChild(title);
-  titleRow.appendChild(closeBtn);
+  titleRow.appendChild(buttonGroup);
+
+  // Make header tappable to expand when minimized on mobile
+  titleRow.addEventListener('click', (e) => {
+    // Only expand if minimized and not clicking buttons
+    if (isMinimized && !e.target.closest('button')) {
+      toggleMinimize();
+    }
+  });
+
   header.appendChild(titleRow);
 
   // Name input (Story 4.5)
@@ -1057,13 +1081,42 @@ function open() {
 }
 
 /**
+ * Toggle minimize state
+ */
+function toggleMinimize() {
+  if (!builderPanel) return;
+
+  isMinimized = !isMinimized;
+
+  if (isMinimized) {
+    builderPanel.classList.add('builder-panel--minimized');
+    const minimizeBtn = builderPanel.querySelector('[data-minimize-builder]');
+    if (minimizeBtn) {
+      minimizeBtn.textContent = '+';
+      minimizeBtn.setAttribute('aria-label', 'Expand builder');
+    }
+  } else {
+    builderPanel.classList.remove('builder-panel--minimized');
+    const minimizeBtn = builderPanel.querySelector('[data-minimize-builder]');
+    if (minimizeBtn) {
+      minimizeBtn.textContent = '−';
+      minimizeBtn.setAttribute('aria-label', 'Minimize builder');
+    }
+  }
+
+  logger.log(`[Koppen] Builder ${isMinimized ? 'minimized' : 'expanded'}`);
+}
+
+/**
  * Close the builder panel
  */
 function close() {
   if (!isOpen) return;
 
   isOpen = false;
+  isMinimized = false; // Reset minimize state
   builderPanel.classList.remove('builder-panel--active');
+  builderPanel.classList.remove('builder-panel--minimized');
   builderPanel.setAttribute('aria-hidden', 'true');
 
   // Reset header button
