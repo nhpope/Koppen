@@ -1207,12 +1207,9 @@ export function getClassificationMode() {
  */
 export async function loadAllDetailTiles(onProgress) {
   try {
-    // Get all tiles (global bounds)
-    const allTiles = await getTilesForBounds({
-      _southWest: { lat: -90, lng: -180 },
-      _northEast: { lat: 90, lng: 180 },
-      toBBoxString: () => '-180,-90,180,90',
-    });
+    // Get all tiles globally for export
+    const { getAllTiles, loadTile } = await import('../utils/data-loader.js');
+    const allTiles = await getAllTiles();
 
     logger.log(`[Koppen] Loading ${allTiles.length} tiles for export...`);
 

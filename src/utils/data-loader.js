@@ -215,6 +215,15 @@ export async function getTilesForBounds(bounds) {
 }
 
 /**
+ * Get all tiles globally (for export)
+ * @returns {Promise<Array>} Array of all tile metadata
+ */
+export async function getAllTiles() {
+  const index = await loadTileIndex();
+  return index.tiles;
+}
+
+/**
  * Get cached climate data (synchronous)
  * @returns {Object|null} Cached GeoJSON or null
  */
