@@ -54,10 +54,14 @@ function decodeState(encoded) {
 function expandCategories(minified) {
   if (!minified || !minified.c) return { categories: [], customParamMap: new Map() };
 
+  console.log('Expanding categories. Has custom params?', !!minified.q);
+  console.log('Custom params count:', minified.q?.length || 0);
+
   // Build custom parameter map from minified data
   const customParamMap = new Map();
   if (minified.q && Array.isArray(minified.q)) {
     minified.q.forEach(param => {
+      console.log(`Registering custom param: ${param.i} = ${param.f}`);
       customParamMap.set(param.i, param.f);
     });
   }
