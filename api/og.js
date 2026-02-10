@@ -3,18 +3,15 @@
  * Renders simplified world map with classification colors
  */
 
-import { createCanvas, registerFont } from 'canvas';
+import { createCanvas } from 'canvas';
 import { gunzipSync } from 'zlib';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Register font for text rendering
-try {
-  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'Inter.ttf');
-  registerFont(fontPath, { family: 'Inter' });
-} catch (error) {
-  console.log('Font registration failed, using default');
-}
+// ES module compatibility
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const SCHEMA_VERSION = 2;
 
@@ -25,27 +22,18 @@ function loadBaseLayer() {
   if (cachedBaseLayer) return cachedBaseLayer;
 
   try {
-    // Try multiple possible paths for Vercel deployment
-    const possiblePaths = [
-      path.join(process.cwd(), 'public', 'data', 'climate-1deg.geojson'),
-      path.join(process.cwd(), 'data', 'climate-1deg.geojson'),
-      path.join(__dirname, '..', 'public', 'data', 'climate-1deg.geojson'),
-      path.join(__dirname, '..', 'data', 'climate-1deg.geojson'),
-    ];
+    // In Vercel, public files are accessible from process.cwd()
+    const dataPath = path.join(process.cwd(), 'public', 'data', 'climate-1deg.geojson');
+    console.log('Attempting to load base layer from:', dataPath);
+    console.log('File exists:', fs.existsSync(dataPath));
 
-    for (const dataPath of possiblePaths) {
-      if (fs.existsSync(dataPath)) {
-        const geojson = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-        cachedBaseLayer = geojson.features;
-        console.log(`Loaded base layer from ${dataPath}: ${cachedBaseLayer.length} features`);
-        return cachedBaseLayer;
-      }
-    }
-
-    console.error('Base layer not found in any expected location');
-    return [];
+    const geojson = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    cachedBaseLayer = geojson.features;
+    console.log(`Loaded base layer: ${cachedBaseLayer.length} features`);
+    return cachedBaseLayer;
   } catch (error) {
     console.error('Failed to load base layer:', error);
+    console.error('Error details:', error.message);
     return [];
   }
 }
