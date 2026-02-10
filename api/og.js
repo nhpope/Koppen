@@ -52,7 +52,15 @@ function decodeState(encoded) {
 }
 
 function expandCategories(minified) {
-  if (!minified || !minified.c) return [];
+  if (!minified || !minified.c) return { categories: [], customParamMap: new Map() };
+
+  // Build custom parameter map from minified data
+  const customParamMap = new Map();
+  if (minified.q && Array.isArray(minified.q)) {
+    minified.q.forEach(param => {
+      customParamMap.set(param.i, param.f);
+    });
+  }
 
   // Two-pass expansion for parent-child relationships
   const categories = minified.c.map(minCat => ({
@@ -78,27 +86,79 @@ function expandCategories(minified) {
     }
   });
 
-  return categories;
+  return { categories, customParamMap };
+}
+
+// Helper functions for derived parameters
+function getMonthlyPrecip(props) {
+  return Array.from({length: 12}, (_, i) => props[`p${i+1}`] || 0);
+}
+
+function getMonthlyTemp(props) {
+  return Array.from({length: 12}, (_, i) => props[`t${i+1}`] || 0);
 }
 
 // Simple parameter calculators for server-side classification
 const PARAMS = {
   MAT: (props) => props.mat || 0,
-  Tmax: (props) => Math.max(...Array.from({length: 12}, (_, i) => props[`t${i+1}`] || 0)),
-  Tmin: (props) => Math.min(...Array.from({length: 12}, (_, i) => props[`t${i+1}`] || 0)),
+  Tmax: (props) => Math.max(...getMonthlyTemp(props)),
+  Tmin: (props) => Math.min(...getMonthlyTemp(props)),
   MAP: (props) => props.map || 0,
-  Pdry: (props) => Math.min(...Array.from({length: 12}, (_, i) => props[`p${i+1}`] || 0)),
-  Pwet: (props) => Math.max(...Array.from({length: 12}, (_, i) => props[`p${i+1}`] || 0)),
+  Pdry: (props) => Math.min(...getMonthlyPrecip(props)),
+  Pwet: (props) => Math.max(...getMonthlyPrecip(props)),
   AridityIndex: (props) => {
     const mat = props.mat || 0;
     const map = props.map || 0;
     return map / (mat + 10);
   },
+
+  // Summer/winter precipitation
+  Psdry: (props) => {
+    const precips = getMonthlyPrecip(props);
+    const isNorthern = (props.lat ?? 0) >= 0;
+    const summerMonths = isNorthern ? [3, 4, 5, 6, 7, 8] : [9, 10, 11, 0, 1, 2];
+    return Math.min(...summerMonths.map(i => precips[i]));
+  },
+
+  Pswet: (props) => {
+    const precips = getMonthlyPrecip(props);
+    const isNorthern = (props.lat ?? 0) >= 0;
+    const summerMonths = isNorthern ? [3, 4, 5, 6, 7, 8] : [9, 10, 11, 0, 1, 2];
+    return Math.max(...summerMonths.map(i => precips[i]));
+  },
+
+  Pwdry: (props) => {
+    const precips = getMonthlyPrecip(props);
+    const isNorthern = (props.lat ?? 0) >= 0;
+    const winterMonths = isNorthern ? [9, 10, 11, 0, 1, 2] : [3, 4, 5, 6, 7, 8];
+    return Math.min(...winterMonths.map(i => precips[i]));
+  },
+
+  Pwwet: (props) => {
+    const precips = getMonthlyPrecip(props);
+    const isNorthern = (props.lat ?? 0) >= 0;
+    const winterMonths = isNorthern ? [9, 10, 11, 0, 1, 2] : [3, 4, 5, 6, 7, 8];
+    return Math.max(...winterMonths.map(i => precips[i]));
+  },
 };
 
-function evaluateRule(rule, props) {
-  const paramValue = PARAMS[rule.parameter]?.(props);
-  if (paramValue === undefined) return false;
+function evaluateRule(rule, props, customParamMap) {
+  let paramValue;
+
+  // Check if it's a built-in parameter
+  if (PARAMS[rule.parameter]) {
+    paramValue = PARAMS[rule.parameter](props);
+  }
+  // Check if it's a custom parameter
+  else if (customParamMap && customParamMap.has(rule.parameter)) {
+    const formula = customParamMap.get(rule.parameter);
+    paramValue = evaluateFormula(formula, props);
+  }
+  else {
+    return false;
+  }
+
+  if (paramValue === undefined || isNaN(paramValue)) return false;
 
   const { operator, value } = rule;
 
@@ -113,7 +173,36 @@ function evaluateRule(rule, props) {
   }
 }
 
-function classifyFeature(feature, categories) {
+/**
+ * Evaluate a simple math formula safely (no eval)
+ * Supports common patterns like: (A - B) / abs(C), A / B
+ */
+function evaluateFormula(formula, props) {
+  try {
+    // Replace parameter names with their values
+    let expr = formula;
+
+    Object.keys(PARAMS).forEach(param => {
+      const value = PARAMS[param](props);
+      expr = expr.replace(new RegExp(`\\b${param}\\b`, 'g'), value);
+    });
+
+    // Handle abs() function
+    expr = expr.replace(/abs\(([^)]+)\)/g, (match, inner) => {
+      return `Math.abs(${inner})`;
+    });
+
+    // Use Function constructor (safer than eval, still evaluates)
+    // Only parameters (numbers) remain in expr at this point
+    const result = Function(`"use strict"; return (${expr})`)();
+    return result;
+  } catch (error) {
+    console.error('Formula evaluation error:', formula, error);
+    return 0;
+  }
+}
+
+function classifyFeature(feature, categories, customParamMap) {
   // Sort by priority (lower = higher priority)
   const sorted = [...categories].sort((a, b) => a.priority - b.priority);
 
@@ -124,13 +213,13 @@ function classifyFeature(feature, categories) {
     if (category.parentId !== null && category.parentId >= 0) {
       const parent = categories[category.parentId];
       if (parent) {
-        const parentMatches = parent.rules.every(rule => evaluateRule(rule, feature.properties));
+        const parentMatches = parent.rules.every(rule => evaluateRule(rule, feature.properties, customParamMap));
         if (!parentMatches) continue;
       }
     }
 
     // Check this category's rules
-    const matches = category.rules.every(rule => evaluateRule(rule, feature.properties));
+    const matches = category.rules.every(rule => evaluateRule(rule, feature.properties, customParamMap));
     if (matches) {
       return category.color;
     }
@@ -139,7 +228,7 @@ function classifyFeature(feature, categories) {
   return null; // Unclassified
 }
 
-function generateMapImage(title, categories) {
+function generateMapImage(title, categories, customParamMap) {
   const width = 1200;
   const height = 630;
   const canvas = createCanvas(width, height);
@@ -158,7 +247,7 @@ function generateMapImage(title, categories) {
     const latToY = (lat) => ((90 - lat) / 180) * height;
 
     features.forEach(feature => {
-      const color = classifyFeature(feature, categories);
+      const color = classifyFeature(feature, categories, customParamMap);
       if (color) {
         const coords = feature.geometry.coordinates[0];
         const [[lon, lat]] = coords;
@@ -201,18 +290,21 @@ export default function handler(req, res) {
 
     let title = 'Koppen Climate Classification';
     let categories = [];
+    let customParamMap = new Map();
 
     if (stateParam) {
       const state = decodeState(stateParam);
       console.log('Decoded state:', state ? 'success' : 'failed');
       if (state && state.m === 'c' && state.r) {
         title = state.n || 'Custom Classification';
-        categories = expandCategories(state.r);
-        console.log(`Loaded ${categories.length} categories for classification`);
+        const expanded = expandCategories(state.r);
+        categories = expanded.categories;
+        customParamMap = expanded.customParamMap;
+        console.log(`Loaded ${categories.length} categories, ${customParamMap.size} custom params`);
       }
     }
 
-    const png = generateMapImage(title, categories);
+    const png = generateMapImage(title, categories, customParamMap);
 
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -221,7 +313,7 @@ export default function handler(req, res) {
     console.error('OG image error:', error);
     console.error('Error stack:', error.stack);
 
-    // Fallback - simple colored rectangle to show something is working
+    // Fallback - simple colored rectangle
     const canvas = createCanvas(1200, 630);
     const ctx = canvas.getContext('2d');
 
@@ -235,8 +327,6 @@ export default function handler(req, res) {
     // White box
     ctx.fillStyle = 'white';
     ctx.fillRect(100, 200, 1000, 230);
-
-    // No text - just show the visual
 
     res.setHeader('Content-Type', 'image/png');
     res.send(canvas.toBuffer('image/png'));
