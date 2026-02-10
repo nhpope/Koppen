@@ -152,25 +152,37 @@ function evaluateRule(rule, props, customParamMap) {
   // Check if it's a custom parameter
   else if (customParamMap && customParamMap.has(rule.parameter)) {
     const formula = customParamMap.get(rule.parameter);
+    console.log(`Evaluating custom param: ${rule.parameter} = ${formula}`);
     paramValue = evaluateFormula(formula, props);
   }
   else {
+    console.log(`Unknown parameter: ${rule.parameter}`);
     return false;
   }
 
-  if (paramValue === undefined || isNaN(paramValue)) return false;
+  if (paramValue === undefined || isNaN(paramValue)) {
+    console.log(`Invalid param value for ${rule.parameter}: ${paramValue}`);
+    return false;
+  }
 
   const { operator, value } = rule;
+  const result = (() => {
+    switch (operator) {
+      case '<': return paramValue < value;
+      case '<=': return paramValue <= value;
+      case '>': return paramValue > value;
+      case '>=': return paramValue >= value;
+      case '==': return Math.abs(paramValue - value) < 0.001;
+      case '!=': return Math.abs(paramValue - value) >= 0.001;
+      default: return false;
+    }
+  })();
 
-  switch (operator) {
-    case '<': return paramValue < value;
-    case '<=': return paramValue <= value;
-    case '>': return paramValue > value;
-    case '>=': return paramValue >= value;
-    case '==': return Math.abs(paramValue - value) < 0.001;
-    case '!=': return Math.abs(paramValue - value) >= 0.001;
-    default: return false;
+  if (rule.parameter === 'TemperatureSeasonality') {
+    console.log(`TemperatureSeasonality check: ${paramValue} ${operator} ${value} = ${result}`);
   }
+
+  return result;
 }
 
 /**
@@ -187,20 +199,28 @@ function evaluateFormula(formula, props) {
       expr = expr.replace(new RegExp(`\\b${param}\\b`, 'g'), value);
     });
 
+    console.log(`Formula: ${formula} -> After substitution: ${expr}`);
+
     // Handle abs() function by evaluating it first
     while (expr.includes('abs(')) {
       expr = expr.replace(/abs\(([^)]+)\)/g, (match, inner) => {
         // Recursively evaluate inner expression
         const innerValue = Function('Math', `"use strict"; return (${inner})`)(Math);
-        return Math.abs(innerValue);
+        const absValue = Math.abs(innerValue);
+        console.log(`abs(${inner}) = abs(${innerValue}) = ${absValue}`);
+        return absValue;
       });
     }
 
+    console.log(`Final expression: ${expr}`);
+
     // Use Function constructor with Math passed as parameter
     const result = Function('Math', `"use strict"; return (${expr})`)(Math);
+    console.log(`Result: ${result}`);
     return result;
   } catch (error) {
     console.error('Formula evaluation error:', formula, error);
+    console.error('Expression was:', expr);
     return 0;
   }
 }
