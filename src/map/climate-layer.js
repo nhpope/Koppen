@@ -1200,6 +1200,72 @@ export function getClassificationMode() {
   return classificationMode;
 }
 
+/**
+ * Load all detail tiles for full-resolution export
+ * @param {Function} onProgress - Progress callback (loaded, total)
+ * @returns {Promise<Array>} All classified detail features
+ */
+export async function loadAllDetailTiles(onProgress) {
+  try {
+    // Get all tiles (global bounds)
+    const allTiles = await getTilesForBounds({
+      _southWest: { lat: -90, lng: -180 },
+      _northEast: { lat: 90, lng: 180 },
+      toBBoxString: () => '-180,-90,180,90',
+    });
+
+    logger.log(`[Koppen] Loading ${allTiles.length} tiles for export...`);
+
+    // Collect all features
+    const allFeatures = [];
+
+    for (let i = 0; i < allTiles.length; i++) {
+      const tile = allTiles[i];
+
+      // Check if already in cache
+      if (loadedTileFeatures.has(tile.file)) {
+        // Use cached features and reclassify them
+        const cachedFeatures = loadedTileFeatures.get(tile.file);
+
+        let classifiedFeatures;
+        if (classificationMode === 'custom' && customRulesEngine) {
+          const result = customRulesEngine.classifyAll(cachedFeatures);
+          classifiedFeatures = [...result.classified, ...result.unclassified];
+        } else {
+          classifiedFeatures = classifyFeatures(cachedFeatures, currentThresholds);
+        }
+
+        allFeatures.push(...classifiedFeatures);
+      } else {
+        // Load and classify the tile
+        const geojson = await loadTile(tile.file);
+        loadedTileFeatures.set(tile.file, geojson.features);
+
+        let classifiedFeatures;
+        if (classificationMode === 'custom' && customRulesEngine) {
+          const result = customRulesEngine.classifyAll(geojson.features);
+          classifiedFeatures = [...result.classified, ...result.unclassified];
+        } else {
+          classifiedFeatures = classifyFeatures(geojson.features, currentThresholds);
+        }
+
+        allFeatures.push(...classifiedFeatures);
+      }
+
+      // Report progress
+      if (onProgress) {
+        onProgress(i + 1, allTiles.length);
+      }
+    }
+
+    logger.log(`[Koppen] Loaded ${allFeatures.length} total detail features`);
+    return allFeatures;
+  } catch (error) {
+    console.error('[Koppen] Failed to load all tiles:', error);
+    throw error;
+  }
+}
+
 // Set up event listener for custom rules changes
 document.addEventListener('koppen:custom-rules-changed', (e) => {
   const { engine } = e.detail || {};
@@ -1231,4 +1297,5 @@ export default {
   getFeatures,
   getSelectedCell,
   deselectCell,
+  loadAllDetailTiles,
 };

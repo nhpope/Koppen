@@ -8,10 +8,88 @@ import fullResExport from './full-res-export.js';
 import { generateFilename, downloadBlob } from './utils.js';
 import { exportJSON, importJSON } from './json-export.js';  // Story 6.5
 import logger from '../utils/logger.js';
-import { getFeatures, getClassificationMode } from '../map/climate-layer.js';
+import { getFeatures, getClassificationMode, loadAllDetailTiles } from '../map/climate-layer.js';
 
 let exportButton = null;
 let includeLegendCheckbox = null;
+let loadingModal = null;
+
+/**
+ * Create loading modal element
+ */
+function createLoadingModal() {
+  const modal = document.createElement('div');
+  modal.className = 'export-loading-modal';
+
+  const content = document.createElement('div');
+  content.className = 'export-loading-modal__content';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'export-loading-modal__spinner';
+
+  const message = document.createElement('div');
+  message.className = 'export-loading-modal__message';
+
+  const progressContainer = document.createElement('div');
+  progressContainer.className = 'export-loading-modal__progress';
+
+  const progressBar = document.createElement('div');
+  progressBar.className = 'export-loading-modal__progress-bar';
+
+  progressContainer.appendChild(progressBar);
+  content.appendChild(spinner);
+  content.appendChild(message);
+  content.appendChild(progressContainer);
+  modal.appendChild(content);
+
+  return modal;
+}
+
+/**
+ * Show loading modal with progress
+ */
+function showLoadingModal(messageText, current, total) {
+  if (!loadingModal) {
+    loadingModal = createLoadingModal();
+    document.body.appendChild(loadingModal);
+  }
+
+  const messageEl = loadingModal.querySelector('.export-loading-modal__message');
+  const progressBar = loadingModal.querySelector('.export-loading-modal__progress-bar');
+
+  if (messageEl) messageEl.textContent = messageText;
+  if (progressBar) {
+    const percent = total > 0 ? (current / total) * 100 : 0;
+    progressBar.style.width = `${percent}%`;
+  }
+
+  loadingModal.style.display = 'flex';
+}
+
+/**
+ * Update loading modal progress
+ */
+function updateLoadingModal(messageText, current, total) {
+  if (!loadingModal) return;
+
+  const messageEl = loadingModal.querySelector('.export-loading-modal__message');
+  const progressBar = loadingModal.querySelector('.export-loading-modal__progress-bar');
+
+  if (messageEl) messageEl.textContent = messageText;
+  if (progressBar) {
+    const percent = total > 0 ? (current / total) * 100 : 0;
+    progressBar.style.width = `${percent}%`;
+  }
+}
+
+/**
+ * Hide loading modal
+ */
+function hideLoadingModal() {
+  if (loadingModal) {
+    loadingModal.style.display = 'none';
+  }
+}
 
 /**
  * Handle export button click
@@ -27,33 +105,49 @@ async function handleExport() {
     // Show loading state
     exportButton.disabled = true;
     exportButton.classList.add('export-button--active');
-    const _ORIGINAL_TEXT = exportButton.textContent;
-    exportButton.textContent = 'Exporting...';
 
     document.dispatchEvent(new CustomEvent('koppen:export-started'));
 
-    // Get classification name for filename (default to 'koppen')
+    // Get classification name for filename
     const classificationName = document.querySelector('[data-classification-name]')?.value || document.getElementById('classification-name')?.value || 'koppen';
 
-    // Get all features and mode
-    const features = getFeatures();
     const mode = getClassificationMode();
     const isCustomMode = mode === 'custom';
 
     let blob, duration;
 
-    // Use full-resolution export if features are available
-    if (features && features.length > 0 && includeLegendCheckbox?.checked) {
-      blob = await fullResExport.exportFullResolution({
-        features,
-        classificationName,
-        isCustomMode,
-      });
-      duration = 0; // Duration tracked in fullResExport
+    // Use full-resolution export if legend is checked
+    if (includeLegendCheckbox?.checked) {
+      // Show progress modal
+      showLoadingModal('Loading tiles for export...', 0, 100);
+
+      try {
+        // Load ALL detail tiles with progress tracking
+        exportButton.textContent = 'Loading tiles...';
+
+        const allFeatures = await loadAllDetailTiles((loaded, total) => {
+          const progress = Math.round((loaded / total) * 100);
+          updateLoadingModal(`Loading tiles: ${loaded}/${total}`, progress, 100);
+          exportButton.textContent = `Loading ${progress}%...`;
+        });
+
+        exportButton.textContent = 'Rendering...';
+        updateLoadingModal('Rendering map...', 100, 100);
+
+        blob = await fullResExport.exportFullResolution({
+          features: allFeatures,
+          classificationName,
+          isCustomMode,
+        });
+        duration = 0;
+      } finally {
+        hideLoadingModal();
+      }
     } else {
-      // Fallback to viewport screenshot
+      // Viewport screenshot (no legend)
+      exportButton.textContent = 'Exporting...';
       const result = await pngGenerator.generatePNG({
-        includeLegend: includeLegendCheckbox?.checked ?? true,
+        includeLegend: false,
         includeWatermark: true,
       });
       blob = result.blob;
