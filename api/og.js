@@ -175,16 +175,8 @@ function generateMapImage(title, categories) {
     });
   }
 
-  // Add subtle watermark at bottom
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  roundRect(ctx, 20, height - 60, 200, 40, 8);
-  ctx.fill();
-
-  ctx.fillStyle = '#64748b';
-  ctx.font = '16px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('koppen.io', 120, height - 40);
+  // No text overlay - map speaks for itself
+  // Title and attribution come from OG meta tags
 
   return canvas.toBuffer('image/png');
 }
