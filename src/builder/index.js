@@ -16,7 +16,7 @@ import stateManager from '../utils/state-manager.js';  // Story 6.6
 import { CustomRulesEngine } from '../climate/custom-rules.js';  // Custom rules
 import CategoryManager from './category-manager.js';  // Custom rules UI
 import logger from '../utils/logger.js';
-import { getFeatures as getClimateFeatures } from '../map/climate-layer.js';  // Static import to avoid dynamic import warning
+import { getFeatures as getClimateFeatures, reclassify, reclassifyWithCustomRules } from '../map/climate-layer.js';  // Static import to avoid dynamic import warning
 import { showError, showConfirm } from '../ui/confirm-dialog.js';  // C.3: Replace native alert/confirm
 
 let builderPanel = null;
@@ -416,6 +416,10 @@ async function startFromKoppen() {
       // Add export/import section (Story 6.5)
       const exportSection = createExportSection();
       content.appendChild(exportSection);
+
+      // Add switch to custom mode section
+      const switchToCustomSection = createSwitchToCustomSection();
+      content.appendChild(switchToCustomSection);
     }
   } catch (error) {
     // Show error with retry option
@@ -744,7 +748,51 @@ function createSwitchToKoppenSection() {
       }));
 
       // Start Koppen mode
-      startFromKoppen();
+      await startFromKoppen();
+
+      // Trigger reclassification with Köppen defaults
+      // This removes custom rules from the map
+      const defaultThresholds = thresholdSliders.getAllValues();
+      reclassify(defaultThresholds);
+
+      logger.log('[Koppen] Switched to Köppen mode and reclassified');
+    }
+  });
+
+  section.appendChild(button);
+
+  return section;
+}
+
+/**
+ * Create switch to custom mode section (for Köppen mode)
+ */
+function createSwitchToCustomSection() {
+  const section = document.createElement('div');
+  section.className = 'builder-panel__reset-section';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'builder-panel__reset-to-custom';
+  button.textContent = 'Switch to Create from Scratch';
+  button.addEventListener('click', async () => {
+    const confirmed = await showConfirm(
+      'Switch to custom mode? This will discard your current threshold modifications.',
+      { title: 'Switch Mode', type: 'warning' },
+    );
+    if (confirmed) {
+      // Clean up Köppen mode
+      classificationMode = 'custom';
+
+      // Dispatch mode change
+      document.dispatchEvent(new CustomEvent('koppen:mode-changed', {
+        detail: { mode: 'custom' },
+      }));
+
+      // Start custom mode
+      startFromScratch();
+
+      logger.log('[Koppen] Switched to custom mode');
     }
   });
 
