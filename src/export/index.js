@@ -106,10 +106,15 @@ export default {
 
     exportButton.addEventListener('click', handleExport);
 
-    // Enable button when map is ready
-    document.addEventListener('koppen:map-ready', () => {
+    // Enable button when map is ready (listen to both events)
+    const enableButton = () => {
       exportButton.disabled = false;
-    });
+      logger.log('[Koppen] Export button enabled');
+    };
+
+    document.addEventListener('koppen:map-ready', enableButton);
+    document.addEventListener('koppen:layer-ready', enableButton);
+    document.addEventListener('koppen:data-loaded', enableButton);
 
     logger.log('[Koppen] Export module initialized');
   },
